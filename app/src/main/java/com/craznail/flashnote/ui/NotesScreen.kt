@@ -20,21 +20,23 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,21 +45,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.craznail.flashnote.R
 import com.craznail.flashnote.data.Note
 import com.craznail.flashnote.data.SummaryMode
+import com.craznail.flashnote.ui.theme.FlashBackground
+import com.craznail.flashnote.ui.theme.FlashError
+import com.craznail.flashnote.ui.theme.FlashIndigo
+import com.craznail.flashnote.ui.theme.FlashOnSurfaceMuted
+import com.craznail.flashnote.ui.theme.FlashPrimary
+import com.craznail.flashnote.ui.theme.FlashPurple
+import com.craznail.flashnote.ui.theme.FlashSuccess
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotesScreen(
     notes: List<Note>,
@@ -67,23 +79,9 @@ fun NotesScreen(
     onOpenNote: (Note) -> Unit,
     onDelete: (Note) -> Unit
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.notes_title)) },
-                actions = {
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_title))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            )
-        }
-    ) { padding ->
+    var pendingDelete by remember { mutableStateOf<Note?>(null) }
+
+    Scaffold(containerColor = FlashBackground) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -92,136 +90,366 @@ fun NotesScreen(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.Top
             ) {
-                if (overlayRunning) {
-                    OutlinedButton(onClick = onToggleOverlay, modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.stop_overlay))
-                    }
-                } else {
-                    Button(onClick = onToggleOverlay, modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.start_overlay))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.notes_title),
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF111827)
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.notes_slogan),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = FlashOnSurfaceMuted
+                    )
+                }
+                Surface(
+                    onClick = onOpenSettings,
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFE5E7EB),
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.settings_title),
+                            tint = Color(0xFF6B7280),
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                 }
             }
 
-            if (notes.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // Functional overlay control — discreet chip, not FAB
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp)
+            ) {
+                Surface(
+                    onClick = onToggleOverlay,
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (overlayRunning) {
+                        FlashPrimary.copy(alpha = 0.12f)
+                    } else {
+                        Color(0xFFE5E7EB)
+                    }
+                ) {
                     Text(
-                        text = stringResource(R.string.empty_notes),
-                        style = MaterialTheme.typography.bodyLarge,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        text = stringResource(
+                            if (overlayRunning) R.string.stop_overlay else R.string.start_overlay
+                        ),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (overlayRunning) FlashPrimary else FlashOnSurfaceMuted,
+                        fontWeight = FontWeight.Medium
                     )
                 }
+            }
+
+            if (notes.isEmpty()) {
+                EmptyNotesState(Modifier.fillMaxSize())
             } else {
                 LazyColumn(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize()
                 ) {
                     items(notes, key = { it.id }) { note ->
-                        NoteRow(
+                        SwipeDeleteNoteCard(
                             note = note,
                             onOpen = { onOpenNote(note) },
-                            onDelete = { onDelete(note) }
+                            onRequestDelete = { pendingDelete = note }
                         )
                     }
                 }
             }
         }
     }
+
+    pendingDelete?.let { note ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = {
+                Text(
+                    stringResource(R.string.delete_confirm_title),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    stringResource(R.string.delete_confirm_body),
+                    color = FlashOnSurfaceMuted
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingDelete = null
+                        onDelete(note)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = FlashError),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(stringResource(R.string.delete_note))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text(stringResource(R.string.cancel), color = FlashOnSurfaceMuted)
+                }
+            },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = Color.White
+        )
+    }
 }
 
 @Composable
-private fun NoteRow(note: Note, onOpen: () -> Unit, onDelete: () -> Unit) {
-    var confirmDelete by remember { mutableStateOf(false) }
-    val time = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
-        .format(Date(note.createdAt))
-    val badge = when {
-        note.summaryMode == SummaryMode.LOCAL && !note.summary.isNullOrBlank() ->
-            stringResource(R.string.badge_local_summary)
-        note.summaryMode == SummaryMode.REMOTE && !note.summary.isNullOrBlank() ->
-            stringResource(R.string.badge_remote_summary)
-        !note.ocrText.isNullOrBlank() -> stringResource(R.string.badge_ocr)
-        else -> stringResource(R.string.badge_image_only)
-    }
-    val snippet = note.summary?.takeIf { it.isNotBlank() }
-        ?: note.ocrText?.takeIf { it.isNotBlank() }?.let {
-            if (it.length > 80) it.take(79) + "…" else it
+private fun EmptyNotesState(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(Modifier.size(96.dp), contentAlignment = Alignment.Center) {
+            Surface(
+                modifier = Modifier
+                    .size(64.dp)
+                    .align(Alignment.TopStart),
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFDBEAFE),
+                shadowElevation = 2.dp
+            ) {}
+            Surface(
+                modifier = Modifier
+                    .size(64.dp)
+                    .align(Alignment.BottomEnd),
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFE0E7FF),
+                shadowElevation = 4.dp
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Image,
+                        contentDescription = null,
+                        tint = FlashPrimary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
         }
-        ?: stringResource(R.string.image_only_hint)
+        Spacer(Modifier.height(24.dp))
+        Text(
+            text = stringResource(R.string.empty_notes),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            color = Color(0xFF111827)
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.empty_notes_sub),
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            color = FlashOnSurfaceMuted
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeDeleteNoteCard(
+    note: Note,
+    onOpen: () -> Unit,
+    onRequestDelete: () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onRequestDelete()
+                false
+            } else {
+                false
+            }
+        }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(FlashError)
+                    .padding(horizontal = 24.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White)
+                    Text(
+                        stringResource(R.string.delete_note),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        },
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = true
+    ) {
+        NoteCard(note = note, onOpen = onOpen)
+    }
+}
+
+@Composable
+private fun NoteCard(note: Note, onOpen: () -> Unit) {
+    val snippet = noteSnippet(note)
+    val badge = noteBadge(note)
+    val timeLabel = relativeTime(note.createdAt)
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
             AsyncImage(
                 model = Uri.fromFile(File(note.imagePath)),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(72.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .size(76.dp)
+                    .clip(RoundedCornerShape(12.dp)),
                 contentScale = ContentScale.Crop
             )
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(time, style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.width(8.dp))
+            Column(
+                Modifier
+                    .weight(1f)
+                    .height(76.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Time top-right of text area
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
                     Text(
-                        badge,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        text = timeLabel,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
+                        color = Color(0xFF9CA3AF)
                     )
                 }
-                Spacer(Modifier.height(4.dp))
                 Text(
-                    snippet,
+                    text = snippet,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    color = FlashOnSurfaceMuted,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
-            }
-            IconButton(onClick = { confirmDelete = true }) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = stringResource(R.string.delete_note),
-                    tint = MaterialTheme.colorScheme.error
-                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    StatusPill(badge)
+                }
             }
         }
     }
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text(stringResource(R.string.delete_confirm_title)) },
-            text = { Text(stringResource(R.string.delete_confirm_body)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDelete = false
-                    onDelete()
-                }) { Text(stringResource(R.string.delete_note)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
+}
+
+private data class BadgeStyle(val label: String, val bg: Color, val fg: Color)
+
+@Composable
+private fun StatusPill(badge: BadgeStyle) {
+    Text(
+        text = badge.label,
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(badge.bg)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        style = MaterialTheme.typography.labelSmall,
+        color = badge.fg,
+        fontWeight = FontWeight.Medium
+    )
+}
+
+@Composable
+private fun noteSnippet(note: Note): String {
+    note.summary?.takeIf { it.isNotBlank() }?.let { return it }
+    note.ocrText?.takeIf { it.isNotBlank() }?.let { return it }
+    return stringResource(R.string.image_only_hint)
+}
+
+@Composable
+private fun noteBadge(note: Note): BadgeStyle = when {
+    note.summaryMode == SummaryMode.REMOTE && !note.summary.isNullOrBlank() ->
+        BadgeStyle(
+            stringResource(R.string.badge_remote_summary),
+            FlashIndigo.copy(alpha = 0.15f),
+            FlashIndigo
         )
+    note.summaryMode == SummaryMode.LOCAL && !note.summary.isNullOrBlank() ->
+        BadgeStyle(
+            stringResource(R.string.badge_local_summary),
+            FlashPurple.copy(alpha = 0.15f),
+            FlashPurple
+        )
+    !note.ocrText.isNullOrBlank() ->
+        BadgeStyle(
+            stringResource(R.string.badge_ocr),
+            FlashSuccess.copy(alpha = 0.15f),
+            FlashSuccess
+        )
+    else ->
+        BadgeStyle(
+            stringResource(R.string.badge_image_only),
+            FlashPrimary.copy(alpha = 0.12f),
+            FlashPrimary
+        )
+}
+
+private fun relativeTime(epochMs: Long): String {
+    val cal = Calendar.getInstance()
+    val now = cal.clone() as Calendar
+    cal.timeInMillis = epochMs
+    val timeFmt = SimpleDateFormat("HH:mm", Locale.CHINA)
+    val dateFmt = SimpleDateFormat("M月d日", Locale.CHINA)
+    val time = timeFmt.format(Date(epochMs))
+
+    val today = now.clone() as Calendar
+    today.set(Calendar.HOUR_OF_DAY, 0)
+    today.set(Calendar.MINUTE, 0)
+    today.set(Calendar.SECOND, 0)
+    today.set(Calendar.MILLISECOND, 0)
+
+    val yesterday = today.clone() as Calendar
+    yesterday.add(Calendar.DAY_OF_YEAR, -1)
+
+    val noteDay = cal.clone() as Calendar
+    noteDay.set(Calendar.HOUR_OF_DAY, 0)
+    noteDay.set(Calendar.MINUTE, 0)
+    noteDay.set(Calendar.SECOND, 0)
+    noteDay.set(Calendar.MILLISECOND, 0)
+
+    return when {
+        noteDay.timeInMillis == today.timeInMillis -> "今天 $time"
+        noteDay.timeInMillis == yesterday.timeInMillis -> "昨天 $time"
+        else -> "${dateFmt.format(Date(epochMs))} $time"
     }
 }
