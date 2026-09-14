@@ -90,16 +90,21 @@ class OverlayBallView @JvmOverloads constructor(
             elevation = 6 * density
         }
 
-        // Brand logo already circular; no white plate / tint
+        // Transparent mark on soft white plate (UI formal overlay asset)
         ballBg = View(context).apply {
             layoutParams = LayoutParams(ballSizePx, ballSizePx)
-            visibility = View.GONE
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0xE6FFFFFF.toInt())
+            }
         }
 
         iconView = ImageView(context).apply {
+            val pad = (10 * density).roundToInt()
             layoutParams = LayoutParams(ballSizePx, ballSizePx)
+            setPadding(pad, pad, pad, pad)
             setImageResource(R.drawable.ic_flash_note)
-            scaleType = ImageView.ScaleType.FIT_XY
+            scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = context.getString(R.string.app_name)
         }
 
