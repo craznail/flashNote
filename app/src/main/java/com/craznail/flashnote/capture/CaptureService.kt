@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -19,6 +20,7 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -43,8 +45,8 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Holds MediaProjection in an ongoing FGS for the process lifetime.
- * Consent once → subsequent captures reuse the same token (no system dialog).
+ * Holds MediaProjection + a **persistent VirtualDisplay** for the process lifetime.
+ * Releasing the VD after each shot causes HyperOS/Android 14 to drop「共享屏幕中」~10s later.
  */
 class CaptureService : Service() {
 
@@ -53,10 +55,14 @@ class CaptureService : Service() {
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private var captureThread: HandlerThread? = null
+    private var captureHandler: Handler? = null
     private val capturing = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var withSummary = false
     private var imageOnly = false
+    private var screenWidth = 0
+    private var screenHeight = 0
+    private var screenDensity = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -75,9 +81,9 @@ class CaptureService : Service() {
                 if (code == Activity.RESULT_OK && data != null) {
                     startAsForeground()
                     setupProjection(code, data)
-                    // First successful grant → tell ball it can capture continuously
+                    ensureVirtualDisplay()
                     OverlayService.notifyProjectionReady(this)
-                    mainHandler.postDelayed({ doCapture() }, 350)
+                    mainHandler.postDelayed({ doCapture() }, 400)
                 } else {
                     OverlayService.notifyUnauthorized(this)
                     if (!hasActiveProjection()) stopSelf()
@@ -87,6 +93,7 @@ class CaptureService : Service() {
                 withSummary = intent.getBooleanExtra(EXTRA_WITH_SUMMARY, false)
                 imageOnly = intent.getBooleanExtra(EXTRA_IMAGE_ONLY, false)
                 startAsForeground()
+                ensureVirtualDisplay()
                 doCapture()
             }
             ACTION_STOP -> {
@@ -95,9 +102,9 @@ class CaptureService : Service() {
                 stopSelf()
             }
             else -> {
-                // Keep service if we already hold projection
                 if (hasActiveProjection()) {
                     startAsForeground()
+                    ensureVirtualDisplay()
                 } else {
                     stopSelf()
                 }
@@ -124,26 +131,62 @@ class CaptureService : Service() {
         }
     }
 
+    private fun readScreenMetrics() {
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getRealMetrics(metrics)
+        screenWidth = metrics.widthPixels
+        screenHeight = metrics.heightPixels
+        screenDensity = metrics.densityDpi
+    }
+
     private fun setupProjection(resultCode: Int, data: Intent) {
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         projection?.stop()
         projection = mpm.getMediaProjection(resultCode, data)?.also { mp ->
             activeProjection = mp
-            cachedResultCode = resultCode
-            cachedResultData = data
             mp.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
-                    // System revoked (user stopped / process policy) → must re-consent
+                    Log.w(TAG, "MediaProjection.onStop — system revoked screen share")
                     activeProjection = null
                     projection = null
-                    cachedResultData = null
-                    teardownDisplays()
+                    releaseVirtualDisplay()
                     OverlayService.notifyProjectionLost(this@CaptureService)
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
             }, mainHandler)
         }
+    }
+
+    /** Keep VD alive for the whole projection session (Xiaomi ~10s drop otherwise). */
+    private fun ensureVirtualDisplay() {
+        val mp = projection ?: activeProjection ?: return
+        if (virtualDisplay != null && imageReader != null) return
+        readScreenMetrics()
+        releaseVirtualDisplay()
+
+        val thread = HandlerThread("flashnote-vd").also { it.start() }
+        captureThread = thread
+        captureHandler = Handler(thread.looper)
+
+        val reader = ImageReader.newInstance(
+            screenWidth, screenHeight, PixelFormat.RGBA_8888, /*maxImages*/ 3
+        )
+        imageReader = reader
+
+        virtualDisplay = mp.createVirtualDisplay(
+            "flashnote-keepalive",
+            screenWidth,
+            screenHeight,
+            screenDensity,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            reader.surface,
+            null,
+            captureHandler
+        )
+        Log.i(TAG, "VirtualDisplay keepalive created ${screenWidth}x$screenHeight")
     }
 
     private fun doCapture() {
@@ -155,11 +198,12 @@ class CaptureService : Service() {
             )
             return
         }
+        ensureVirtualDisplay()
         if (!capturing.compareAndSet(false, true)) return
 
         scope.launch {
             try {
-                val bitmap = withContext(Dispatchers.IO) { grabBitmap(mp) }
+                val bitmap = withContext(Dispatchers.IO) { grabBitmapFromReader() }
                 if (bitmap != null) {
                     val path = withContext(Dispatchers.IO) { savePng(bitmap) }
                     val app = application as FlashNoteApp
@@ -213,72 +257,62 @@ class CaptureService : Service() {
                 OverlayService.notifyUnauthorized(this@CaptureService)
             } finally {
                 capturing.set(false)
-                // Keep FGS + MediaProjection alive for the next tap — do NOT stopForeground.
+                // Keep FGS + VD + MediaProjection alive.
             }
         }
     }
 
-    private fun grabBitmap(mp: MediaProjection): Bitmap? {
-        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        wm.defaultDisplay.getRealMetrics(metrics)
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
-        val density = metrics.densityDpi
+    private fun grabBitmapFromReader(): Bitmap? {
+        val reader = imageReader ?: return null
+        val width = screenWidth
+        val height = screenHeight
+        if (width <= 0 || height <= 0) return null
 
-        teardownDisplays()
+        // Drain stale frames, then wait briefly for a fresh one
+        fun drain() {
+            while (true) {
+                val img = reader.acquireLatestImage() ?: break
+                img.close()
+            }
+        }
+        drain()
 
-        val thread = HandlerThread("flashnote-capture").also { it.start() }
-        captureThread = thread
-        val handler = Handler(thread.looper)
-
-        val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-        imageReader = reader
-
-        virtualDisplay = mp.createVirtualDisplay(
-            "flashnote-vd",
-            width,
-            height,
-            density,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            reader.surface,
-            null,
-            handler
-        )
-
-        val deadline = System.currentTimeMillis() + 2500
+        val deadline = System.currentTimeMillis() + 2000
         var bitmap: Bitmap? = null
         while (System.currentTimeMillis() < deadline && bitmap == null) {
-            val image = reader.acquireLatestImage()
+            val image: Image? = reader.acquireLatestImage()
             if (image != null) {
                 try {
-                    val plane = image.planes[0]
-                    val buffer = plane.buffer
-                    val pixelStride = plane.pixelStride
-                    val rowStride = plane.rowStride
-                    val rowPadding = rowStride - pixelStride * width
-                    val bmp = Bitmap.createBitmap(
-                        width + rowPadding / pixelStride,
-                        height,
-                        Bitmap.Config.ARGB_8888
-                    )
-                    bmp.copyPixelsFromBuffer(buffer)
-                    bitmap = Bitmap.createBitmap(bmp, 0, 0, width, height)
-                    if (bmp != bitmap) bmp.recycle()
+                    bitmap = imageToBitmap(image, width, height)
                 } finally {
                     image.close()
                 }
             } else {
                 try {
-                    Thread.sleep(40)
+                    Thread.sleep(30)
                 } catch (_: InterruptedException) {
                     break
                 }
             }
         }
-        teardownDisplays()
         return bitmap
+    }
+
+    private fun imageToBitmap(image: Image, width: Int, height: Int): Bitmap {
+        val plane = image.planes[0]
+        val buffer = plane.buffer
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+        val rowPadding = rowStride - pixelStride * width
+        val bmp = Bitmap.createBitmap(
+            width + rowPadding / pixelStride,
+            height,
+            Bitmap.Config.ARGB_8888
+        )
+        bmp.copyPixelsFromBuffer(buffer)
+        return if (bmp.width == width) bmp else Bitmap.createBitmap(bmp, 0, 0, width, height).also {
+            if (it != bmp) bmp.recycle()
+        }
     }
 
     private fun savePng(bitmap: Bitmap): String {
@@ -293,21 +327,21 @@ class CaptureService : Service() {
         return file.absolutePath
     }
 
-    private fun teardownDisplays() {
+    private fun releaseVirtualDisplay() {
         virtualDisplay?.release()
         virtualDisplay = null
         imageReader?.close()
         imageReader = null
         captureThread?.quitSafely()
         captureThread = null
+        captureHandler = null
     }
 
     private fun teardown() {
-        teardownDisplays()
+        releaseVirtualDisplay()
         projection?.stop()
         projection = null
         activeProjection = null
-        cachedResultData = null
     }
 
     override fun onDestroy() {
@@ -316,6 +350,7 @@ class CaptureService : Service() {
     }
 
     companion object {
+        private const val TAG = "FlashNote.Capture"
         const val ACTION_START_WITH_PROJECTION = "com.craznail.flashnote.START_WITH_PROJECTION"
         const val ACTION_CAPTURE = "com.craznail.flashnote.CAPTURE"
         const val ACTION_STOP = "com.craznail.flashnote.STOP_CAPTURE"
@@ -327,12 +362,6 @@ class CaptureService : Service() {
 
         @Volatile
         private var activeProjection: MediaProjection? = null
-
-        @Volatile
-        private var cachedResultCode: Int = Activity.RESULT_CANCELED
-
-        @Volatile
-        private var cachedResultData: Intent? = null
 
         fun hasActiveProjection(): Boolean = activeProjection != null
 

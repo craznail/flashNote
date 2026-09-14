@@ -13,6 +13,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -34,6 +35,7 @@ fun SettingsScreen(
     onLocalSummaryChange: (Boolean) -> Unit,
     onSimulatePremiumChange: (Boolean) -> Unit,
     onRemoteAiChange: (Boolean) -> Unit,
+    onOpenBatterySettings: () -> Unit,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -93,6 +95,22 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
             )
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            Text(
+                stringResource(R.string.battery_unrestricted),
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                stringResource(R.string.battery_unrestricted_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+            )
+            OutlinedButton(
+                onClick = onOpenBatterySettings,
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                Text(stringResource(R.string.open_battery_settings))
+            }
             Text(
                 text = stringResource(
                     R.string.app_version,
