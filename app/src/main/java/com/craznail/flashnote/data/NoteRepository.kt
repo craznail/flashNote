@@ -12,8 +12,20 @@ class NoteRepository(context: Context) {
 
     fun notesDirectory(): File = notesDir
 
-    suspend fun saveNote(imagePath: String, summary: String? = null): Long =
-        dao.insert(Note(imagePath = imagePath, summary = summary))
+    suspend fun saveNote(
+        imagePath: String,
+        ocrText: String? = null,
+        summary: String? = null,
+        summaryMode: SummaryMode = SummaryMode.NONE
+    ): Long =
+        dao.insert(
+            Note(
+                imagePath = imagePath,
+                ocrText = ocrText,
+                summary = summary,
+                summaryMode = summaryMode
+            )
+        )
 
     suspend fun delete(note: Note) {
         runCatching { File(note.imagePath).delete() }

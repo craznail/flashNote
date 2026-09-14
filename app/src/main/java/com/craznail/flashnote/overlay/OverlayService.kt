@@ -26,8 +26,10 @@ class OverlayService : Service() {
     private var ballView: OverlayBallView? = null
     private var windowManager: WindowManager? = null
 
-    /** When true, next capture also requests local-summary stub flag. */
+    /** When true, next capture requests local summary (prefs may also enable). */
     @Volatile private var wantSummary = false
+    /** When true, skip OCR and summary — image only. */
+    @Volatile private var wantImageOnly = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -88,14 +90,17 @@ class OverlayService : Service() {
         ballView = OverlayBallView(this).also { ball ->
             ball.onTap = {
                 wantSummary = false
+                wantImageOnly = false
                 triggerCapture()
             }
             ball.onSaveImageOnly = {
                 wantSummary = false
+                wantImageOnly = true
                 triggerCapture()
             }
             ball.onSaveImageAndSummary = {
                 wantSummary = true
+                wantImageOnly = false
                 triggerCapture()
             }
             ball.attach(windowManager!!)
@@ -104,13 +109,18 @@ class OverlayService : Service() {
 
     private fun triggerCapture() {
         if (CaptureService.hasActiveProjection()) {
-            CaptureService.startCapture(this, withSummary = wantSummary)
+            CaptureService.startCapture(
+                this,
+                withSummary = wantSummary,
+                imageOnly = wantImageOnly
+            )
         } else {
             // No token → system MediaProjection consent (brief translucent activity)
             startActivity(
                 Intent(this, ProjectionPermissionActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     putExtra(ProjectionPermissionActivity.EXTRA_WITH_SUMMARY, wantSummary)
+                    putExtra(ProjectionPermissionActivity.EXTRA_IMAGE_ONLY, wantImageOnly)
                 }
             )
         }

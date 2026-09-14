@@ -145,9 +145,18 @@ private fun NoteRow(note: Note, onDelete: () -> Unit) {
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(time, style = MaterialTheme.typography.titleSmall)
-                note.summary?.let {
+                val snippet = note.summary?.takeIf { it.isNotBlank() }
+                    ?: note.ocrText?.takeIf { it.isNotBlank() }?.let {
+                        if (it.length > 80) it.take(79) + "…" else it
+                    }
+                snippet?.let {
                     Spacer(Modifier.height(4.dp))
-                    Text(it, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        maxLines = 2
+                    )
                 }
             }
             IconButton(onClick = onDelete) {

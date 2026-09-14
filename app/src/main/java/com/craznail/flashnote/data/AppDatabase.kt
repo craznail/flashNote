@@ -4,8 +4,21 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverter
+import androidx.room.TypeConverters
 
-@Database(entities = [Note::class], version = 1, exportSchema = false)
+class Converters {
+    @TypeConverter
+    fun toMode(value: String?): SummaryMode =
+        value?.let { runCatching { SummaryMode.valueOf(it) }.getOrDefault(SummaryMode.NONE) }
+            ?: SummaryMode.NONE
+
+    @TypeConverter
+    fun fromMode(mode: SummaryMode?): String = (mode ?: SummaryMode.NONE).name
+}
+
+@Database(entities = [Note::class], version = 2, exportSchema = false)
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
 
@@ -18,7 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "flashnote.db"
-                ).build().also { instance = it }
+                ).fallbackToDestructiveMigration().build().also { instance = it }
             }
     }
 }

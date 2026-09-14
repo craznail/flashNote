@@ -76,3 +76,10 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## 许可证
 
 私有仓库；按项目约定使用。
+
+
+## Slice ② — OCR & local summary
+
+- After capture (unless 「只存图」), ML Kit Chinese text recognition runs on-device and fills `ocrText`.
+- Settings 「本地摘要」 or long-press 「存图+摘要」 builds a **local** heuristic summary (first meaningful lines) — no cloud.
+- Notes list shows summary snippet, else OCR snippet.

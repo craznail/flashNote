@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Lightweight prefs. isPremium is a compile-time stub (false).
- * 「本地摘要」toggle is persisted; generation itself is a no-op for slice ①.
+ * 「本地摘要」toggle is persisted; when on, CaptureService builds a local heuristic summary.
  */
 class PreferencesManager(context: Context) {
     private val prefs: SharedPreferences =

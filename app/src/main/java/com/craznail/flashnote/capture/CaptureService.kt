@@ -25,6 +25,9 @@ import androidx.core.app.ServiceCompat
 import com.craznail.flashnote.FlashNoteApp
 import com.craznail.flashnote.R
 import com.craznail.flashnote.data.PreferencesManager
+import com.craznail.flashnote.data.SummaryMode
+import com.craznail.flashnote.process.LocalOcr
+import com.craznail.flashnote.process.LocalSummary
 import com.craznail.flashnote.overlay.OverlayService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +54,7 @@ class CaptureService : Service() {
     private val capturing = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var withSummary = false
+    private var imageOnly = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -58,6 +62,7 @@ class CaptureService : Service() {
         when (intent?.action) {
             ACTION_START_WITH_PROJECTION -> {
                 withSummary = intent.getBooleanExtra(EXTRA_WITH_SUMMARY, false)
+                imageOnly = intent.getBooleanExtra(EXTRA_IMAGE_ONLY, false)
                 val code = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
                 @Suppress("DEPRECATION")
                 val data = if (Build.VERSION.SDK_INT >= 33) {
@@ -76,6 +81,7 @@ class CaptureService : Service() {
             }
             ACTION_CAPTURE -> {
                 withSummary = intent.getBooleanExtra(EXTRA_WITH_SUMMARY, false)
+                imageOnly = intent.getBooleanExtra(EXTRA_IMAGE_ONLY, false)
                 startAsForeground()
                 doCapture()
             }
@@ -121,7 +127,10 @@ class CaptureService : Service() {
     private fun doCapture() {
         val mp = projection ?: activeProjection
         if (mp == null) {
-            startActivity(ProjectionPermissionActivity.intent(this, withSummary))
+            startActivity(
+                ProjectionPermissionActivity.intent(this, withSummary, imageOnly)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
             return
         }
         if (!capturing.compareAndSet(false, true)) return
@@ -131,14 +140,22 @@ class CaptureService : Service() {
                 val bitmap = withContext(Dispatchers.IO) { grabBitmap(mp) }
                 if (bitmap != null) {
                     val path = withContext(Dispatchers.IO) { savePng(bitmap) }
-                    bitmap.recycle()
                     val app = application as FlashNoteApp
-                    // Local summary: no-op generation for slice ① (null even if requested)
                     val prefs = PreferencesManager.get(this@CaptureService)
-                    val summary: String? = if (withSummary || prefs.localSummaryEnabled.value) {
-                        null // stub — generation not implemented
-                    } else null
-                    app.notes.saveNote(path, summary)
+                    var ocr: String? = null
+                    var summary: String? = null
+                    var mode = SummaryMode.NONE
+                    if (!imageOnly) {
+                        ocr = withContext(Dispatchers.Default) { LocalOcr.recognize(bitmap) }
+                        val wantLocal =
+                            withSummary || prefs.localSummaryEnabled.value
+                        if (wantLocal) {
+                            summary = LocalSummary.fromOcr(ocr)
+                            mode = if (summary != null) SummaryMode.LOCAL else SummaryMode.NONE
+                        }
+                    }
+                    bitmap.recycle()
+                    app.notes.saveNote(path, ocr, summary, mode)
                     OverlayService.notifySaved(this@CaptureService, path)
                 } else {
                     OverlayService.notifyUnauthorized(this@CaptureService)
@@ -260,6 +277,7 @@ class CaptureService : Service() {
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
         const val EXTRA_WITH_SUMMARY = "withSummary"
+        const val EXTRA_IMAGE_ONLY = "imageOnly"
         private const val NOTIF_ID = 1002
 
         @Volatile
@@ -271,13 +289,15 @@ class CaptureService : Service() {
             context: Context,
             resultCode: Int,
             data: Intent,
-            withSummary: Boolean = false
+            withSummary: Boolean = false,
+            imageOnly: Boolean = false
         ) {
             val i = Intent(context, CaptureService::class.java).apply {
                 action = ACTION_START_WITH_PROJECTION
                 putExtra(EXTRA_RESULT_CODE, resultCode)
                 putExtra(EXTRA_RESULT_DATA, data)
                 putExtra(EXTRA_WITH_SUMMARY, withSummary)
+                putExtra(EXTRA_IMAGE_ONLY, imageOnly)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(i)
@@ -286,10 +306,15 @@ class CaptureService : Service() {
             }
         }
 
-        fun startCapture(context: Context, withSummary: Boolean = false) {
+        fun startCapture(
+            context: Context,
+            withSummary: Boolean = false,
+            imageOnly: Boolean = false
+        ) {
             val i = Intent(context, CaptureService::class.java).apply {
                 action = ACTION_CAPTURE
                 putExtra(EXTRA_WITH_SUMMARY, withSummary)
+                putExtra(EXTRA_IMAGE_ONLY, imageOnly)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(i)
