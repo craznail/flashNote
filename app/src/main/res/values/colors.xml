@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#2E7D32</color>
-    <color name="overlay_ball">#43A047</color>
+    <color name="overlay_ball">#52FFFFFF</color>
+    <color name="overlay_ball_stroke">#73FFFFFF</color>
     <color name="overlay_ball_pressed">#2E7D32</color>
     <color name="overlay_check">#66BB6A</color>
+    <color name="overlay_menu_icon">#1E293B</color>
+    <color name="overlay_exit">#EF4444</color>
 </resources>

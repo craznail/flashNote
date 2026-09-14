@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.lifecycleScope
 import com.craznail.flashnote.data.Note
 import com.craznail.flashnote.overlay.OverlayService
@@ -23,6 +24,7 @@ import com.craznail.flashnote.ui.NotesScreen
 import com.craznail.flashnote.ui.SettingsScreen
 import com.craznail.flashnote.ui.theme.FlashNoteTheme
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
 
@@ -30,11 +32,14 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { /* optional */ }
 
+    private val openSettingsRequests = MutableStateFlow(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 33) {
             notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
+        consumeOpenSettings(intent)
 
         val app = application as FlashNoteApp
 
@@ -42,6 +47,10 @@ class MainActivity : ComponentActivity() {
             FlashNoteTheme {
                 var showSettings by remember { mutableStateOf(false) }
                 var selectedNote by remember { mutableStateOf<Note?>(null) }
+                val settingsTick by openSettingsRequests.collectAsState()
+                LaunchedEffect(settingsTick) {
+                    if (settingsTick > 0) showSettings = true
+                }
                 // Driven by OverlayService lifecycle — covers chip toggle AND START_OVERLAY intent
                 val overlayRunning by OverlayService.running.collectAsState()
                 val notes by app.notes.observeNotes().collectAsState(initial = emptyList())
@@ -143,7 +152,18 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        consumeOpenSettings(intent)
         maybeStartOverlayFromIntent(intent)
+    }
+
+    private fun consumeOpenSettings(intent: Intent?) {
+        if (intent == null) return
+        val want = intent.action == ACTION_OPEN_SETTINGS ||
+            intent.getBooleanExtra(EXTRA_OPEN_SETTINGS, false)
+        if (!want) return
+        intent.putExtra(EXTRA_OPEN_SETTINGS, false)
+        if (intent.action == ACTION_OPEN_SETTINGS) intent.action = null
+        openSettingsRequests.value = openSettingsRequests.value + 1
     }
 
     override fun onResume() {
@@ -171,5 +191,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val ACTION_START_OVERLAY = "com.craznail.flashnote.START_OVERLAY"
         const val EXTRA_START_OVERLAY = "startOverlay"
+        const val ACTION_OPEN_SETTINGS = "com.craznail.flashnote.OPEN_SETTINGS"
+        const val EXTRA_OPEN_SETTINGS = "openSettings"
     }
 }

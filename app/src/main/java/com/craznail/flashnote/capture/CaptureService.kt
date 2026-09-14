@@ -37,6 +37,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -205,7 +207,19 @@ class CaptureService : Service() {
 
         scope.launch {
             try {
-                val bitmap = withContext(Dispatchers.IO) { grabBitmapFromReader() }
+                // Hide floating ball (+ arc menu) so it is not in the screenshot
+                withContext(Dispatchers.Main) {
+                    suspendCancellableCoroutine { cont ->
+                        OverlayService.hideForCapture {
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+                    }
+                }
+                val bitmap = try {
+                    withContext(Dispatchers.IO) { grabBitmapFromReader() }
+                } finally {
+                    OverlayService.showAfterCapture()
+                }
                 if (bitmap != null) {
                     val path = withContext(Dispatchers.IO) { savePng(bitmap) }
                     val app = application as FlashNoteApp

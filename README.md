@@ -33,12 +33,12 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 1. 打开应用 → 笔记收件箱。
 2. 点击「开启悬浮球」。若未授权「显示在其他应用上层」，会跳转系统设置。
-3. 首次点击悬浮球：系统弹出 **屏幕录制 / MediaProjection** 授权框；同意后自动截一屏并保存。
-4. 之后点击悬浮球：直接截屏保存（MediaProjection 令牌仍有效时）。
-5. 成功：球心绿色对勾约 420ms（无中心 Toast / 无侧边 pill）；可选右下角 24dp 缩略图角标。
-6. 拒绝授权：球体红色闪约 350ms；再点球可重新进入系统授权。
-7. 系统 tip（仅授权成功 / 共享中断）：球旁短 pill（≤8 字，约 1.2s）。
-8. 长按悬浮球约 400ms：弹出「只存图」「存图+摘要」。
+3. 点击悬浮球：展开弧形玻璃菜单（再点球或点空白处收起）。
+4. 菜单项：「只存图」「存图+摘要」「设置」「退出」。首次截屏项会弹出 **MediaProjection** 授权；同意后截屏保存。
+5. 成功：球心绿色对勾约 420ms（无中心 Toast）；可选缩略图角标。截屏前会暂时隐藏悬浮球，避免球入镜。
+6. 拒绝授权：球体红色闪约 350ms。
+7. 系统 tip（授权成功 / 共享中断 / 再点退出）：球旁短 pill（≤8 字）。
+8. 「退出」需连点两次确认（侧边 pill「再点退出」）；「设置」打开应用设置页。
 
 ### 设置
 
@@ -56,7 +56,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Overlay → Capture → Save → Feedback 代码路径
 
-1. `OverlayService` + `OverlayBallView`：46dp 球、贴边露出约 34dp、点击/长按（按下缩放 0.92）。
+1. `OverlayService` + `OverlayBallView`：40dp 玻璃球、贴边露出约 29dp、点击展开弧形菜单（按下缩放 0.92）。
 2. 无 MediaProjection 令牌时 → `ProjectionPermissionActivity`（透明、用完即关）。
 3. `CaptureService`（`mediaProjection` FGS）→ `VirtualDisplay` + `ImageReader` → PNG 写入 `files/notes/`。
 4. `NoteRepository` / Room 插入行 → `OverlayService.notifySaved` → 球心绿勾 420ms（无中心弹层）。
@@ -82,7 +82,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## Slice ② — OCR & local summary
 
 - After capture (unless 「只存图」), ML Kit Chinese text recognition runs on-device and fills `ocrText`.
-- Settings 「本地摘要」 or long-press 「存图+摘要」 builds a **local** heuristic summary (first meaningful lines) — no cloud.
+- Settings 「本地摘要」 or arc menu 「存图+摘要」 builds a **local** heuristic summary (first meaningful lines) — no cloud.
 - Notes list shows summary snippet, else OCR snippet.
 
 
@@ -95,7 +95,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## Slice ④ — Remote AI (paid path)
 
 - Settings: 「模拟付费」unlocks 「远端 AI 概要」 (real IAP later).
-- Long-press 「存图+摘要」 with premium + remote on → real OpenAI-compatible Chat Completions; toast「摘要生成中」; fail → local summary + tip; screenshot always saved.
+- Arc menu 「存图+摘要」 with premium + remote on → real OpenAI-compatible Chat Completions; toast「摘要生成中」; fail → local summary + tip; screenshot always saved.
 - Missing Base URL / API Key → tip「未配置远端 API…」(no silent fake success; QA `【远端】` stand-in removed).
 - Request sends OCR text only (in `messages`); no images / device ids.
 - Image-only / summary-off paths never call remote.

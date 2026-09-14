@@ -7,7 +7,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.WindowManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,12 +41,13 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         setRunning(true)
         // Must hit startForeground before ANY heavy UI work — TCG/slow devices
         // otherwise trip ForegroundServiceDidNotStartInTimeException (~5–10s).
         startAsForeground()
         // Defer WindowManager ball attach so onCreate returns immediately.
-        android.os.Handler(android.os.Looper.getMainLooper()).post { showBall() }
+        Handler(Looper.getMainLooper()).post { showBall() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -118,11 +121,6 @@ class OverlayService : Service() {
         if (ballView != null) return
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         ballView = OverlayBallView(this).also { ball ->
-            ball.onTap = {
-                wantSummary = false
-                wantImageOnly = false
-                triggerCapture()
-            }
             ball.onSaveImageOnly = {
                 wantSummary = false
                 wantImageOnly = true
@@ -132,6 +130,23 @@ class OverlayService : Service() {
                 wantSummary = true
                 wantImageOnly = false
                 triggerCapture()
+            }
+            ball.onOpenSettings = {
+                startActivity(
+                    Intent(this, MainActivity::class.java).apply {
+                        addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        )
+                        putExtra(MainActivity.EXTRA_OPEN_SETTINGS, true)
+                        action = MainActivity.ACTION_OPEN_SETTINGS
+                    }
+                )
+            }
+            ball.onExit = {
+                CaptureService.stop(this)
+                stopSelf()
             }
             ball.attach(windowManager!!)
         }
@@ -157,6 +172,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         CaptureService.stop(this)
         ballView?.let { v -> runCatching { windowManager?.removeView(v) } }
         ballView = null
@@ -175,6 +191,34 @@ class OverlayService : Service() {
         const val EXTRA_IMAGE_PATH = "imagePath"
         const val EXTRA_TOAST = "toastText"
         private const val NOTIF_ID = 1001
+
+        @Volatile
+        private var instance: OverlayService? = null
+
+        private val mainHandler = Handler(Looper.getMainLooper())
+
+        /**
+         * Hide overlay (ball + arc) before MediaProjection grab, wait ~60ms for 1–2 frames,
+         * then invoke [onHidden] (may be called on main thread).
+         */
+        fun hideForCapture(onHidden: () -> Unit) {
+            val svc = instance
+            val ball = svc?.ballView
+            if (ball == null) {
+                onHidden()
+                return
+            }
+            mainHandler.post {
+                ball.hideForCapture()
+                mainHandler.postDelayed({ onHidden() }, 60L)
+            }
+        }
+
+        fun showAfterCapture() {
+            mainHandler.post {
+                instance?.ballView?.showAfterCapture()
+            }
+        }
 
         fun start(context: Context) {
             val i = Intent(context, OverlayService::class.java)
