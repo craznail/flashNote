@@ -16,6 +16,9 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "IS_PREMIUM", "false")
+        // Optional real endpoint; empty → QA stand-in 「【远端】…」
+        buildConfigField("String", "REMOTE_AI_ENDPOINT", "\"\"")
+        buildConfigField("String", "REMOTE_AI_API_KEY", "\"\"")
     }
 
     buildTypes {

@@ -46,13 +46,18 @@ class MainActivity : ComponentActivity() {
                 }
                 val notes by app.notes.observeNotes().collectAsState(initial = emptyList())
                 val localSummary by app.prefs.localSummaryEnabled.collectAsState()
+                val simulatePremium by app.prefs.simulatePremium.collectAsState()
+                val remoteAi by app.prefs.remoteAiEnabled.collectAsState()
 
                 when {
                     showSettings -> {
                         SettingsScreen(
                             localSummaryEnabled = localSummary,
-                            isPremium = app.prefs.isPremium,
+                            simulatePremium = simulatePremium,
+                            remoteAiEnabled = remoteAi,
                             onLocalSummaryChange = { app.prefs.setLocalSummaryEnabled(it) },
+                            onSimulatePremiumChange = { app.prefs.setSimulatePremium(it) },
+                            onRemoteAiChange = { app.prefs.setRemoteAiEnabled(it) },
                             onBack = { showSettings = false }
                         )
                     }

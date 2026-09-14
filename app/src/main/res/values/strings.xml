@@ -10,7 +10,7 @@
     <string name="grant_overlay">去授权</string>
     <string name="local_summary">本地摘要</string>
     <string name="local_summary_desc">开启后截屏会生成本地摘要（首几行抽句，不上云）</string>
-    <string name="premium_stub">高级版：未开通（isPremium=false）</string>
+    <string name="premium_stub">真支付 / 上架计费后置；当前用模拟付费开关验证收费路径</string>
     <string name="saved_to_notes">已保存到笔记</string>
     <string name="capture_failed">截屏失败，请重试</string>
     <string name="projection_needed">需要屏幕录制权限以截屏</string>
@@ -36,4 +36,11 @@
     <string name="delete_confirm_title">删除这条笔记？</string>
     <string name="delete_confirm_body">图片和文本都会移除，无法恢复。</string>
     <string name="cancel">取消</string>
+    <string name="simulate_premium">模拟付费（开发）</string>
+    <string name="simulate_premium_desc">真支付后置；打开后可启用远端 AI 概要</string>
+    <string name="remote_ai">远端 AI 概要</string>
+    <string name="remote_ai_desc">长按「存图+摘要」走云端；失败回落本地。请求只含 OCR 文本</string>
+    <string name="remote_ai_locked">需先打开「模拟付费」</string>
+    <string name="remote_fallback_local">远端失败，已用本地摘要</string>
+    <string name="remote_fallback_image">远端失败，已只存图/OCR</string>
 </resources>

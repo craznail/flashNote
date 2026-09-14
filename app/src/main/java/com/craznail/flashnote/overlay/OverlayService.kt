@@ -47,8 +47,10 @@ class OverlayService : Service() {
             }
             ACTION_SHOW_SAVED -> {
                 val path = intent.getStringExtra(EXTRA_IMAGE_PATH)
+                val toast = intent.getStringExtra(EXTRA_TOAST)
+                    ?: getString(R.string.saved_to_notes)
                 ballView?.showSuccessFeedback(
-                    toastText = getString(R.string.saved_to_notes),
+                    toastText = toast,
                     thumbnailPath = path
                 )
             }
@@ -138,6 +140,7 @@ class OverlayService : Service() {
         const val ACTION_SHOW_SAVED = "com.craznail.flashnote.SHOW_SAVED"
         const val ACTION_SHOW_UNAUTHORIZED = "com.craznail.flashnote.SHOW_UNAUTHORIZED"
         const val EXTRA_IMAGE_PATH = "imagePath"
+        const val EXTRA_TOAST = "toastText"
         private const val NOTIF_ID = 1001
 
         fun start(context: Context) {
@@ -155,11 +158,16 @@ class OverlayService : Service() {
             )
         }
 
-        fun notifySaved(context: Context, imagePath: String? = null) {
+        fun notifySaved(
+            context: Context,
+            imagePath: String? = null,
+            toastText: String? = null
+        ) {
             context.startService(
                 Intent(context, OverlayService::class.java)
                     .setAction(ACTION_SHOW_SAVED)
                     .putExtra(EXTRA_IMAGE_PATH, imagePath)
+                    .putExtra(EXTRA_TOAST, toastText)
             )
         }
 

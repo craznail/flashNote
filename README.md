@@ -89,3 +89,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 - Notes list: newest first, thumbnail, badge (本地摘要 / 含 OCR / 仅图), snippet.
 - Tap row → detail: full image + summary + OCR text.
+
+
+## Slice ④ — Remote AI (paid path)
+
+- Settings: 「模拟付费」unlocks 「远端 AI 概要」 (real IAP later).
+- Long-press 「存图+摘要」 with remote on → cloud/stand-in; fail → local summary toast, never blocks browsing.
+- Request body only `{ "text": "<ocr>" }` when `REMOTE_AI_ENDPOINT` is set in `build.gradle.kts`; empty endpoint uses QA stand-in prefixed `【远端】`.
+- Turning local summary off + not long-pressing summary → image only.

@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -28,8 +28,11 @@ import com.craznail.flashnote.R
 @Composable
 fun SettingsScreen(
     localSummaryEnabled: Boolean,
-    isPremium: Boolean,
+    simulatePremium: Boolean,
+    remoteAiEnabled: Boolean,
     onLocalSummaryChange: (Boolean) -> Unit,
+    onSimulatePremiumChange: (Boolean) -> Unit,
+    onRemoteAiChange: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -39,7 +42,7 @@ fun SettingsScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
-                            Icons.Filled.ArrowBack,
+                            Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back)
                         )
                     }
@@ -58,33 +61,65 @@ fun SettingsScreen(
                 .padding(padding)
                 .padding(16.dp)
         ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text(
-                        stringResource(R.string.local_summary),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        stringResource(R.string.local_summary_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
-                    )
-                }
-                Switch(
-                    checked = localSummaryEnabled,
-                    onCheckedChange = onLocalSummaryChange
-                )
-            }
-            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+            SettingSwitchRow(
+                title = stringResource(R.string.local_summary),
+                desc = stringResource(R.string.local_summary_desc),
+                checked = localSummaryEnabled,
+                onCheckedChange = onLocalSummaryChange
+            )
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            SettingSwitchRow(
+                title = stringResource(R.string.simulate_premium),
+                desc = stringResource(R.string.simulate_premium_desc),
+                checked = simulatePremium,
+                onCheckedChange = onSimulatePremiumChange
+            )
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            SettingSwitchRow(
+                title = stringResource(R.string.remote_ai),
+                desc = if (simulatePremium) {
+                    stringResource(R.string.remote_ai_desc)
+                } else {
+                    stringResource(R.string.remote_ai_locked)
+                },
+                checked = remoteAiEnabled && simulatePremium,
+                enabled = simulatePremium,
+                onCheckedChange = onRemoteAiChange
+            )
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
             Text(
-                text = stringResource(R.string.premium_stub) +
-                    if (isPremium) " ✓" else "",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                text = stringResource(R.string.premium_stub),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
             )
         }
+    }
+}
+
+@Composable
+private fun SettingSwitchRow(
+    title: String,
+    desc: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                desc,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
+        )
     }
 }

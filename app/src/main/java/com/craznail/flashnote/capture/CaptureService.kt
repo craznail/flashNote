@@ -28,6 +28,7 @@ import com.craznail.flashnote.data.PreferencesManager
 import com.craznail.flashnote.data.SummaryMode
 import com.craznail.flashnote.process.LocalOcr
 import com.craznail.flashnote.process.LocalSummary
+import com.craznail.flashnote.process.RemoteAiClient
 import com.craznail.flashnote.overlay.OverlayService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -145,18 +146,46 @@ class CaptureService : Service() {
                     var ocr: String? = null
                     var summary: String? = null
                     var mode = SummaryMode.NONE
-                    if (!imageOnly) {
+                    var toastMsg: String? = null
+                    // 关摘要且非长按「存图+摘要」→ 只存图
+                    val summaryRequested =
+                        withSummary || prefs.localSummaryEnabled.value
+                    val skipText = imageOnly || (!withSummary && !prefs.localSummaryEnabled.value)
+                    if (!skipText) {
                         ocr = withContext(Dispatchers.Default) { LocalOcr.recognize(bitmap) }
-                        val wantLocal =
-                            withSummary || prefs.localSummaryEnabled.value
-                        if (wantLocal) {
-                            summary = LocalSummary.fromOcr(ocr)
-                            mode = if (summary != null) SummaryMode.LOCAL else SummaryMode.NONE
+                        if (summaryRequested) {
+                            // 远端仅长按「存图+摘要」；单击仍走本地（若开）
+                            val useRemote =
+                                withSummary && prefs.isPremium && prefs.remoteAiEnabled.value
+                            if (useRemote) {
+                                val remote = withContext(Dispatchers.IO) {
+                                    RemoteAiClient.summarize(ocr)
+                                }
+                                if (remote.isSuccess) {
+                                    summary = remote.getOrNull()
+                                    mode = SummaryMode.REMOTE
+                                } else {
+                                    summary = LocalSummary.fromOcr(ocr)
+                                    if (summary != null) {
+                                        mode = SummaryMode.LOCAL
+                                        toastMsg = getString(R.string.remote_fallback_local)
+                                    } else {
+                                        toastMsg = getString(R.string.remote_fallback_image)
+                                    }
+                                }
+                            } else {
+                                summary = LocalSummary.fromOcr(ocr)
+                                mode = if (summary != null) SummaryMode.LOCAL else SummaryMode.NONE
+                            }
                         }
                     }
                     bitmap.recycle()
                     app.notes.saveNote(path, ocr, summary, mode)
-                    OverlayService.notifySaved(this@CaptureService, path)
+                    OverlayService.notifySaved(
+                        this@CaptureService,
+                        path,
+                        toastMsg ?: getString(R.string.saved_to_notes)
+                    )
                 } else {
                     OverlayService.notifyUnauthorized(this@CaptureService)
                 }
