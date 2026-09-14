@@ -9,7 +9,7 @@
     <string name="overlay_permission_needed">需要「显示在其他应用上层」权限</string>
     <string name="grant_overlay">去授权</string>
     <string name="local_summary">本地摘要</string>
-    <string name="local_summary_desc">开启后可对笔记生成本地摘要（当前为占位，暂不生成）</string>
+    <string name="local_summary_desc">开启后截屏会生成本地摘要（首几行抽句，不上云）</string>
     <string name="premium_stub">高级版：未开通（isPremium=false）</string>
     <string name="saved_to_notes">已保存到笔记</string>
     <string name="capture_failed">截屏失败，请重试</string>
@@ -25,4 +25,12 @@
     <string name="action_image_only">只存图</string>
     <string name="action_image_summary">存图+摘要</string>
     <string name="unauthorized_capture">未授权截屏</string>
+    <string name="note_detail_title">笔记详情</string>
+    <string name="section_summary">摘要</string>
+    <string name="section_ocr">识别文本</string>
+    <string name="image_only_hint">仅图片，无文本</string>
+    <string name="badge_local_summary">本地摘要</string>
+    <string name="badge_remote_summary">远端摘要</string>
+    <string name="badge_ocr">含 OCR</string>
+    <string name="badge_image_only">仅图</string>
 </resources>

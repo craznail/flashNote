@@ -1,6 +1,7 @@
 package com.craznail.flashnote.ui
 
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,10 +40,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.craznail.flashnote.R
 import com.craznail.flashnote.data.Note
+import com.craznail.flashnote.data.SummaryMode
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -55,6 +58,7 @@ fun NotesScreen(
     overlayRunning: Boolean,
     onToggleOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenNote: (Note) -> Unit,
     onDelete: (Note) -> Unit
 ) {
     Scaffold(
@@ -111,7 +115,11 @@ fun NotesScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(notes, key = { it.id }) { note ->
-                        NoteRow(note = note, onDelete = { onDelete(note) })
+                        NoteRow(
+                            note = note,
+                            onOpen = { onOpenNote(note) },
+                            onDelete = { onDelete(note) }
+                        )
                     }
                 }
             }
@@ -120,11 +128,27 @@ fun NotesScreen(
 }
 
 @Composable
-private fun NoteRow(note: Note, onDelete: () -> Unit) {
-    val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA)
+private fun NoteRow(note: Note, onOpen: () -> Unit, onDelete: () -> Unit) {
+    val time = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
         .format(Date(note.createdAt))
+    val badge = when {
+        note.summaryMode == SummaryMode.LOCAL && !note.summary.isNullOrBlank() ->
+            stringResource(R.string.badge_local_summary)
+        note.summaryMode == SummaryMode.REMOTE && !note.summary.isNullOrBlank() ->
+            stringResource(R.string.badge_remote_summary)
+        !note.ocrText.isNullOrBlank() -> stringResource(R.string.badge_ocr)
+        else -> stringResource(R.string.badge_image_only)
+    }
+    val snippet = note.summary?.takeIf { it.isNotBlank() }
+        ?: note.ocrText?.takeIf { it.isNotBlank() }?.let {
+            if (it.length > 80) it.take(79) + "…" else it
+        }
+        ?: stringResource(R.string.image_only_hint)
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen),
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -144,20 +168,27 @@ private fun NoteRow(note: Note, onDelete: () -> Unit) {
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(time, style = MaterialTheme.typography.titleSmall)
-                val snippet = note.summary?.takeIf { it.isNotBlank() }
-                    ?: note.ocrText?.takeIf { it.isNotBlank() }?.let {
-                        if (it.length > 80) it.take(79) + "…" else it
-                    }
-                snippet?.let {
-                    Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(time, style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                        maxLines = 2
+                        badge,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    snippet,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             IconButton(onClick = onDelete) {
                 Icon(

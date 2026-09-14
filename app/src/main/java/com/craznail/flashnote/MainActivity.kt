@@ -15,7 +15,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import com.craznail.flashnote.data.Note
 import com.craznail.flashnote.overlay.OverlayService
+import com.craznail.flashnote.ui.NoteDetailScreen
 import com.craznail.flashnote.ui.NotesScreen
 import com.craznail.flashnote.ui.SettingsScreen
 import com.craznail.flashnote.ui.theme.FlashNoteTheme
@@ -38,47 +40,60 @@ class MainActivity : ComponentActivity() {
         setContent {
             FlashNoteTheme {
                 var showSettings by remember { mutableStateOf(false) }
+                var selectedNote by remember { mutableStateOf<Note?>(null) }
                 var overlayRunning by remember {
                     mutableStateOf(OverlayService.isRunning(this@MainActivity))
                 }
                 val notes by app.notes.observeNotes().collectAsState(initial = emptyList())
                 val localSummary by app.prefs.localSummaryEnabled.collectAsState()
 
-                if (showSettings) {
-                    SettingsScreen(
-                        localSummaryEnabled = localSummary,
-                        isPremium = app.prefs.isPremium,
-                        onLocalSummaryChange = { app.prefs.setLocalSummaryEnabled(it) },
-                        onBack = { showSettings = false }
-                    )
-                } else {
-                    NotesScreen(
-                        notes = notes,
-                        overlayRunning = overlayRunning,
-                        onToggleOverlay = {
-                            if (overlayRunning) {
-                                OverlayService.stop(this@MainActivity)
-                                overlayRunning = false
-                            } else {
-                                ensureOverlayPermission {
-                                    OverlayService.start(this@MainActivity)
-                                    overlayRunning = true
+                when {
+                    showSettings -> {
+                        SettingsScreen(
+                            localSummaryEnabled = localSummary,
+                            isPremium = app.prefs.isPremium,
+                            onLocalSummaryChange = { app.prefs.setLocalSummaryEnabled(it) },
+                            onBack = { showSettings = false }
+                        )
+                    }
+                    selectedNote != null -> {
+                        val note = selectedNote!!
+                        NoteDetailScreen(
+                            note = note,
+                            onBack = { selectedNote = null },
+                            onDelete = {
+                                lifecycleScope.launch {
+                                    app.notes.delete(note)
+                                    selectedNote = null
                                 }
                             }
-                        },
-                        onOpenSettings = { showSettings = true },
-                        onDelete = { note ->
-                            lifecycleScope.launch { app.notes.delete(note) }
-                        }
-                    )
+                        )
+                    }
+                    else -> {
+                        NotesScreen(
+                            notes = notes,
+                            overlayRunning = overlayRunning,
+                            onToggleOverlay = {
+                                if (overlayRunning) {
+                                    OverlayService.stop(this@MainActivity)
+                                    overlayRunning = false
+                                } else {
+                                    ensureOverlayPermission {
+                                        OverlayService.start(this@MainActivity)
+                                        overlayRunning = true
+                                    }
+                                }
+                            },
+                            onOpenSettings = { showSettings = true },
+                            onOpenNote = { selectedNote = it },
+                            onDelete = { note ->
+                                lifecycleScope.launch { app.notes.delete(note) }
+                            }
+                        )
+                    }
                 }
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Refresh overlay state when returning from settings
     }
 
     private fun ensureOverlayPermission(onGranted: () -> Unit) {

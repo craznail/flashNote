@@ -83,3 +83,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - After capture (unless 「只存图」), ML Kit Chinese text recognition runs on-device and fills `ocrText`.
 - Settings 「本地摘要」 or long-press 「存图+摘要」 builds a **local** heuristic summary (first meaningful lines) — no cloud.
 - Notes list shows summary snippet, else OCR snippet.
+
+
+## Slice ③ — Inbox & detail
+
+- Notes list: newest first, thumbnail, badge (本地摘要 / 含 OCR / 仅图), snippet.
+- Tap row → detail: full image + summary + OCR text.
