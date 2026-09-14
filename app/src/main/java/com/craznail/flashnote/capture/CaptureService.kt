@@ -87,7 +87,7 @@ class CaptureService : Service() {
                     OverlayService.notifyProjectionReady(this)
                     mainHandler.postDelayed({ doCapture() }, 400)
                 } else {
-                    OverlayService.notifyUnauthorized(this)
+                    OverlayService.notifyUnauthorized(this, getString(R.string.unauthorized_capture))
                     if (!hasActiveProjection()) stopSelf()
                 }
             }
@@ -278,12 +278,12 @@ class CaptureService : Service() {
                         toastMsg ?: getString(R.string.saved_to_notes)
                     )
                 } else {
-                    OverlayService.notifyUnauthorized(this@CaptureService)
+                    OverlayService.notifyUnauthorized(this@CaptureService, getString(R.string.capture_failed_save))
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 // Clears sticky loading pill if remote was in-flight when capture errored.
-                OverlayService.notifyUnauthorized(this@CaptureService)
+                OverlayService.notifyUnauthorized(this@CaptureService, getString(R.string.capture_failed_save))
             } finally {
                 capturing.set(false)
                 // Keep FGS + VD + MediaProjection alive.

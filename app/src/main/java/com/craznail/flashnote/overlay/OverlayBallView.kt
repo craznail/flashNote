@@ -1,5 +1,6 @@
 package com.craznail.flashnote.overlay
 
+import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
@@ -56,11 +57,17 @@ class OverlayBallView @JvmOverloads constructor(
     private val arcRadiusPx = (64 * density).roundToInt()
     private val gapAlongArcDp = 9f // ~8–10dp chord spacing target via angle span
 
-    // Locked glass colors
-    private val fillMain = 0x52FFFFFF.toInt() // α=0.32
-    private val strokeMain = 0x73FFFFFF.toInt() // α=0.45
-    private val fillSub = 0x4DFFFFFF.toInt() // α≈0.30 mid of 0.28–0.32
-    private val strokeSub = 0x73FFFFFF.toInt()
+    // Blue-white normal / green success / red failure; menu blue-white glass
+    private val fillNormal = 0x52E8F1FF.toInt()
+    private val strokeNormal = 0x73BFDBFE.toInt()
+    private val fillSuccess = 0xB34ADE80.toInt()
+    private val strokeSuccess = 0xE622C55E.toInt()
+    private val fillFailure = 0xB3F87171.toInt()
+    private val strokeFailure = 0xE6EF4444.toInt()
+    private val fillMain = fillNormal
+    private val strokeMain = strokeNormal
+    private val fillSub = 0x66E8F1FF.toInt()
+    private val strokeSub = 0x73BFDBFE.toInt()
 
     private val ballContainer: FrameLayout
     private val ballBg: View
@@ -87,6 +94,15 @@ class OverlayBallView @JvmOverloads constructor(
     private var capturingHidden = false
     /** Sticky side pill (remote summarizing) — stays until clearSidePill / success / fail. */
     private var pillSticky = false
+    private var ballMood = BallMood.NORMAL
+    private var lastFailReason: String? = null
+    private var failMenuMode = false
+    private var colorAnimator: ValueAnimator? = null
+    private var normalizeRunnable: Runnable? = null
+    private var currentFill: Int = 0x52E8F1FF.toInt()
+    private var currentStroke: Int = 0x73BFDBFE.toInt()
+
+    private enum class BallMood { NORMAL, SUCCESS, FAILURE }
 
     private val touchHotspotPx = (48 * density).roundToInt()
 
@@ -101,9 +117,11 @@ class OverlayBallView @JvmOverloads constructor(
             elevation = 3 * density // soft low-contrast shadow
         }
 
+        currentFill = fillNormal
+        currentStroke = strokeNormal
         ballBg = View(context).apply {
             layoutParams = LayoutParams(ballSizePx, ballSizePx)
-            background = glassOval(fillMain, strokeMain)
+            background = glassOval(currentFill, currentStroke)
         }
 
         iconView = ImageView(context).apply {
@@ -138,10 +156,10 @@ class OverlayBallView @JvmOverloads constructor(
         }
 
         thumbBadge = ImageView(context).apply {
-            val d = (16 * density).roundToInt()
+            val d = (20 * density).roundToInt()
             layoutParams = LayoutParams(d, d).apply {
                 gravity = Gravity.TOP or Gravity.END
-                setMargins(0, 0, 0, 0)
+                setMargins(0, (-2 * density).roundToInt(), (-2 * density).roundToInt(), 0)
             }
             visibility = View.GONE
             scaleType = ImageView.ScaleType.CENTER_CROP
@@ -332,28 +350,41 @@ class OverlayBallView @JvmOverloads constructor(
      */
     fun showSuccessFeedback(tipText: String? = null, thumbnailPath: String? = null) {
         clearSidePill(immediate = true)
-        checkView.visibility = View.VISIBLE
-        checkView.alpha = 1f
-        iconView.visibility = View.INVISIBLE
-        handler.postDelayed({
-            checkView.visibility = View.GONE
-            iconView.visibility = View.VISIBLE
-        }, 420)
-
+        failMenuMode = false
+        lastFailReason = null
+        ballMood = BallMood.SUCCESS
+        checkView.visibility = View.GONE
+        redDot.visibility = View.GONE
+        iconView.visibility = View.VISIBLE
+        iconView.clearColorFilter()
+        animateBallColors(fillSuccess, strokeSuccess, 160L)
         if (!thumbnailPath.isNullOrBlank() && File(thumbnailPath).exists()) {
             setThumbnailBadge(thumbnailPath)
         }
+        scheduleNormalize(520L)
         val tip = tipText?.takeIf { it.isNotBlank() }
         if (tip != null) {
             handler.postDelayed({
                 showSidePill(tip, 0xCC374151.toInt(), 1_600L, sticky = false)
-            }, 440)
+            }, 480L)
         }
     }
 
     fun showFailureUnauthorized() {
+        showFailure(context.getString(R.string.unauthorized_capture))
+    }
+
+    fun showFailure(reason: String) {
         clearSidePill(immediate = true)
-        flashBallRed(350L)
+        normalizeRunnable?.let { handler.removeCallbacks(it) }
+        lastFailReason = reason
+        ballMood = BallMood.FAILURE
+        failMenuMode = false
+        checkView.visibility = View.GONE
+        redDot.visibility = View.GONE
+        iconView.visibility = View.VISIBLE
+        iconView.clearColorFilter()
+        animateBallColors(fillFailure, strokeFailure, 160L)
     }
 
     fun showSystemTip(text: String, durationMs: Long = 1_200L) {
@@ -363,7 +394,7 @@ class OverlayBallView @JvmOverloads constructor(
     fun setThumbnailBadge(path: String) {
         try {
             val bmp = android.graphics.BitmapFactory.decodeFile(path) ?: return
-            val size = (16 * density).roundToInt()
+            val size = (20 * density).roundToInt()
             val scaled = android.graphics.Bitmap.createScaledBitmap(bmp, size, size, true)
             if (scaled != bmp) bmp.recycle()
             val drawable = RoundedBitmapDrawableFactory.create(resources, scaled).apply {
@@ -683,11 +714,11 @@ class OverlayBallView @JvmOverloads constructor(
 
                 when {
                     !moved && event.actionMasked == MotionEvent.ACTION_UP -> {
-                        if (menuVisible) {
-                            // Tap ball again → dismiss
-                            hideActionMenu()
-                        } else {
-                            showActionMenu()
+                        when {
+                            ballMood == BallMood.FAILURE && !menuVisible -> openFailFlow()
+                            menuVisible && failMenuMode -> dismissFailFlow()
+                            menuVisible -> hideActionMenu()
+                            else -> showActionMenu()
                         }
                     }
                     moved -> snapToEdge(wm, lp)
@@ -722,6 +753,100 @@ class OverlayBallView @JvmOverloads constructor(
             start()
         }
     }
+
+    private fun openFailFlow() {
+        iconView.setColorFilter(0xFFFFFFFF.toInt())
+        iconView.setImageResource(android.R.drawable.ic_dialog_alert)
+        handler.postDelayed({
+            if (ballMood != BallMood.FAILURE) return@postDelayed
+            failMenuMode = true
+            menuButtons.forEachIndexed { i, btn ->
+                if (i == 0) {
+                    btn.setImageResource(android.R.drawable.ic_menu_info_details)
+                    btn.clearColorFilter()
+                    btn.setColorFilter(0xFF1E293B.toInt())
+                    btn.contentDescription = context.getString(R.string.view_fail_reason)
+                    btn.setOnClickListener {
+                        val r = lastFailReason ?: context.getString(R.string.unauthorized_capture)
+                        showSidePill(r, 0xCC374151.toInt(), 2_000L, sticky = false)
+                    }
+                }
+            }
+            showActionMenu()
+            handler.post {
+                menuButtons.drop(1).forEach {
+                    it.visibility = View.GONE
+                    it.alpha = 0f
+                }
+            }
+        }, 220L)
+    }
+
+    private fun dismissFailFlow() {
+        hideActionMenu()
+        failMenuMode = false
+        restoreNormalMenuButtons()
+        iconView.setImageResource(R.drawable.ic_flash_note)
+        iconView.clearColorFilter()
+        lastFailReason = null
+        ballMood = BallMood.NORMAL
+        animateBallColors(fillNormal, strokeNormal, 420L)
+    }
+
+    private fun restoreNormalMenuButtons() {
+        val icons = listOf(
+            R.drawable.ic_menu_image to R.string.action_image_only,
+            R.drawable.ic_menu_summary to R.string.action_image_summary,
+            R.drawable.ic_menu_settings to R.string.action_settings,
+            R.drawable.ic_menu_exit to R.string.action_exit
+        )
+        menuButtons.forEachIndexed { i, btn ->
+            val (icon, label) = icons[i]
+            btn.setImageResource(icon)
+            btn.contentDescription = context.getString(label)
+            if (i == 3) btn.setColorFilter(0xFFEF4444.toInt()) else btn.clearColorFilter()
+            btn.setOnClickListener {
+                when (i) {
+                    0 -> { hideActionMenu(); onSaveImageOnly?.invoke() }
+                    1 -> { hideActionMenu(); onSaveImageAndSummary?.invoke() }
+                    2 -> { hideActionMenu(); onOpenSettings?.invoke() }
+                    3 -> handleExitTap()
+                }
+            }
+            btn.visibility = View.INVISIBLE
+        }
+    }
+
+    private fun scheduleNormalize(delayMs: Long) {
+        normalizeRunnable?.let { handler.removeCallbacks(it) }
+        val r = Runnable {
+            if (ballMood == BallMood.FAILURE) return@Runnable
+            ballMood = BallMood.NORMAL
+            animateBallColors(fillNormal, strokeNormal, 480L)
+        }
+        normalizeRunnable = r
+        handler.postDelayed(r, delayMs)
+    }
+
+    private fun animateBallColors(toFill: Int, toStroke: Int, durationMs: Long) {
+        colorAnimator?.cancel()
+        val fromFill = currentFill
+        val fromStroke = currentStroke
+        val anim = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = durationMs
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { a ->
+                val f = a.animatedValue as Float
+                val eval = ArgbEvaluator()
+                currentFill = eval.evaluate(f, fromFill, toFill) as Int
+                currentStroke = eval.evaluate(f, fromStroke, toStroke) as Int
+                ballBg.background = glassOval(currentFill, currentStroke)
+            }
+        }
+        colorAnimator = anim
+        anim.start()
+    }
+
 
     companion object {
         const val PRIMARY_BLUE = 0xFF3B82F6.toInt()

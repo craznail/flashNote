@@ -72,8 +72,9 @@ class OverlayService : Service() {
                 )
             }
             ACTION_SHOW_UNAUTHORIZED -> {
-                // Also clears any stuck remote-loading pill if capture failed mid-flight.
-                ballView?.showFailureUnauthorized()
+                val reason = intent.getStringExtra(EXTRA_FAIL_REASON)
+                    ?: getString(R.string.unauthorized_capture)
+                ballView?.showFailure(reason)
             }
             ACTION_PROJECTION_READY -> {
                 if (!showedContinuousTip) {
@@ -204,6 +205,7 @@ class OverlayService : Service() {
         const val EXTRA_IMAGE_PATH = "imagePath"
         const val EXTRA_TOAST = "toastText"
         const val EXTRA_STICKY = "stickyToast"
+        const val EXTRA_FAIL_REASON = "failReason"
         private const val NOTIF_ID = 1001
 
         @Volatile
@@ -262,10 +264,11 @@ class OverlayService : Service() {
             )
         }
 
-        fun notifyUnauthorized(context: Context) {
+        fun notifyUnauthorized(context: Context, reason: String? = null) {
             context.startService(
                 Intent(context, OverlayService::class.java)
                     .setAction(ACTION_SHOW_UNAUTHORIZED)
+                    .putExtra(EXTRA_FAIL_REASON, reason)
             )
         }
 
