@@ -12,8 +12,8 @@ android {
         applicationId = "com.craznail.flashnote"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.1.3"
+        versionCode = 3
+        versionName = "0.1.2-p0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "IS_PREMIUM", "false")
         // Optional real endpoint; empty → QA stand-in 「【远端】…」

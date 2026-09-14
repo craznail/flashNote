@@ -3,7 +3,7 @@
     <string name="app_name">闪记 FlashNote</string>
     <string name="notes_title">笔记收件箱</string>
     <string name="settings_title">设置</string>
-    <string name="empty_notes">还没有笔记\n开启悬浮球后长按即可截屏保存</string>
+    <string name="empty_notes">还没有笔记\n开启悬浮球后点击即可截屏保存</string>
     <string name="start_overlay">开启悬浮球</string>
     <string name="stop_overlay">关闭悬浮球</string>
     <string name="overlay_permission_needed">需要「显示在其他应用上层」权限</string>
@@ -15,7 +15,7 @@
     <string name="capture_failed">截屏失败，请重试</string>
     <string name="projection_needed">需要屏幕录制权限以截屏</string>
     <string name="notification_overlay_title">闪记悬浮球运行中</string>
-    <string name="notification_overlay_text">短按打开闪记 · 长按截屏保存</string>
+    <string name="notification_overlay_text">点击悬浮球可截屏保存到笔记</string>
     <string name="notification_capture_title">闪记正在截屏</string>
     <string name="notification_channel_overlay">悬浮球服务</string>
     <string name="notification_channel_capture">截屏服务</string>
