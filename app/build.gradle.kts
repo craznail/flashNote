@@ -4,6 +4,26 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+fun escapeForBuildConfig(value: String): String =
+    value.replace("\\", "\\\\").replace("\"", "\\\"")
+
+val localPropMap: Map<String, String> = run {
+    val f = rootProject.file("local.properties")
+    if (!f.exists()) return@run emptyMap()
+    val map = linkedMapOf<String, String>()
+    f.forEachLine { raw ->
+        val line = raw.trim()
+        if (line.isEmpty() || line.startsWith("#")) return@forEachLine
+        val idx = line.indexOf('=')
+        if (idx <= 0) return@forEachLine
+        map[line.substring(0, idx).trim()] = line.substring(idx + 1).trim()
+    }
+    map
+}
+val remoteEndpoint = localPropMap["REMOTE_AI_ENDPOINT"].orEmpty()
+val remoteApiKey = localPropMap["REMOTE_AI_API_KEY"].orEmpty()
+val remoteModel = localPropMap["REMOTE_AI_MODEL"].orEmpty()
+
 android {
     namespace = "com.craznail.flashnote"
     compileSdk = 34
@@ -12,13 +32,27 @@ android {
         applicationId = "com.craznail.flashnote"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.1.4"
+        versionCode = 5
+        versionName = "0.1.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "IS_PREMIUM", "false")
-        // Optional real endpoint; empty → QA stand-in 「【远端】…」
-        buildConfigField("String", "REMOTE_AI_ENDPOINT", "\"\"")
-        buildConfigField("String", "REMOTE_AI_API_KEY", "\"\"")
+        // Optional build defaults from local.properties; prefs override at runtime.
+        // Keys must never be committed — local.properties is gitignored.
+        buildConfigField(
+            "String",
+            "REMOTE_AI_ENDPOINT",
+            "\"${escapeForBuildConfig(remoteEndpoint)}\""
+        )
+        buildConfigField(
+            "String",
+            "REMOTE_AI_API_KEY",
+            "\"${escapeForBuildConfig(remoteApiKey)}\""
+        )
+        buildConfigField(
+            "String",
+            "REMOTE_AI_MODEL",
+            "\"${escapeForBuildConfig(remoteModel)}\""
+        )
     }
 
     buildTypes {

@@ -77,6 +77,7 @@ class OverlayBallView @JvmOverloads constructor(
             showActionMenu()
         }
     }
+    private var hideToastRunnable: Runnable? = null
 
     init {
         // Expandable root so menu/toast can show without clipping
@@ -297,18 +298,27 @@ class OverlayBallView @JvmOverloads constructor(
         handler.postDelayed({ redDot.visibility = View.GONE }, 650)
     }
 
-    private fun showToastBar(text: String, bgColor: Int) {
+    /** Plain tip toast (no green check) — loading / config tips. */
+    fun showPlainToast(text: String, durationMs: Long = 2500) {
+        showToastBar(text, 0xDD374151.toInt(), durationMs)
+    }
+
+    private fun showToastBar(text: String, bgColor: Int, durationMs: Long = 1200) {
+        hideToastRunnable?.let { handler.removeCallbacks(it) }
         expandWindowForExtras()
         toastBar.text = text
         (toastBar.background as? GradientDrawable)?.setColor(bgColor)
         toastBar.visibility = View.VISIBLE
+        toastBar.alpha = 0f
         toastBar.animate().alpha(1f).setDuration(150).start()
-        handler.postDelayed({
+        val hide = Runnable {
             toastBar.animate().alpha(0f).setDuration(200).withEndAction {
                 toastBar.visibility = View.GONE
                 shrinkWindowIfIdle()
             }.start()
-        }, 1200)
+        }
+        hideToastRunnable = hide
+        handler.postDelayed(hide, durationMs)
     }
 
     private fun showActionMenu() {

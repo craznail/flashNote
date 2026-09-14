@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,6 +24,8 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Diamond
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -32,6 +35,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -39,19 +43,30 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
 import com.craznail.flashnote.BuildConfig
 import com.craznail.flashnote.R
+import com.craznail.flashnote.data.PreferencesManager
 import com.craznail.flashnote.ui.theme.FlashBackground
 import com.craznail.flashnote.ui.theme.FlashOnSurfaceMuted
 import com.craznail.flashnote.ui.theme.FlashPrimary
@@ -63,12 +78,28 @@ fun SettingsScreen(
     localSummaryEnabled: Boolean,
     simulatePremium: Boolean,
     remoteAiEnabled: Boolean,
+    remoteAiBaseUrl: String,
+    remoteAiApiKey: String,
+    remoteAiModel: String,
     onLocalSummaryChange: (Boolean) -> Unit,
     onSimulatePremiumChange: (Boolean) -> Unit,
     onRemoteAiChange: (Boolean) -> Unit,
+    onSaveRemoteAiConfig: (baseUrl: String, apiKey: String, model: String) -> Unit,
     onOpenBatterySettings: () -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    var editBaseUrl by remember { mutableStateOf(remoteAiBaseUrl) }
+    var editApiKey by remember { mutableStateOf(remoteAiApiKey) }
+    var editModel by remember { mutableStateOf(remoteAiModel) }
+    var showKey by remember { mutableStateOf(false) }
+
+    LaunchedEffect(remoteAiBaseUrl, remoteAiApiKey, remoteAiModel) {
+        editBaseUrl = remoteAiBaseUrl
+        editApiKey = remoteAiApiKey
+        editModel = remoteAiModel.ifBlank { PreferencesManager.DEFAULT_MODEL }
+    }
+
     Scaffold(
         containerColor = FlashBackground,
         topBar = {
@@ -104,7 +135,6 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
-            // Card 1: 本地摘要
             SettingsCard {
                 SettingSwitchRow(
                     icon = Icons.Default.Description,
@@ -119,7 +149,6 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // Card 2: 模拟付费 / 订阅 → toggles simulatePremium
             SettingsCard {
                 Column {
                     SettingSwitchRow(
@@ -180,7 +209,6 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // Card 3: 远端 AI 概要
             SettingsCard {
                 Column(Modifier.alpha(if (simulatePremium) 1f else 0.55f)) {
                     Row(
@@ -247,13 +275,78 @@ fun SettingsScreen(
                         FeatureBullet(stringResource(R.string.remote_ai_feature_1))
                         Spacer(Modifier.height(4.dp))
                         FeatureBullet(stringResource(R.string.remote_ai_feature_2))
+                    } else {
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            stringResource(R.string.remote_ai_config_section),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF374151)
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = editBaseUrl,
+                            onValueChange = { editBaseUrl = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text(stringResource(R.string.remote_ai_base_url)) },
+                            placeholder = { Text(stringResource(R.string.remote_ai_base_url_hint)) }
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = editApiKey,
+                            onValueChange = { editApiKey = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text(stringResource(R.string.remote_ai_api_key)) },
+                            placeholder = { Text(stringResource(R.string.remote_ai_api_key_hint)) },
+                            visualTransformation = if (showKey) {
+                                VisualTransformation.None
+                            } else {
+                                PasswordVisualTransformation()
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            trailingIcon = {
+                                IconButton(onClick = { showKey = !showKey }) {
+                                    Icon(
+                                        if (showKey) Icons.Default.VisibilityOff
+                                        else Icons.Default.Visibility,
+                                        contentDescription = null
+                                    )
+                                }
+                            }
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = editModel,
+                            onValueChange = { editModel = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text(stringResource(R.string.remote_ai_model)) },
+                            placeholder = { Text(stringResource(R.string.remote_ai_model_hint)) }
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                onSaveRemoteAiConfig(editBaseUrl, editApiKey, editModel)
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.remote_ai_config_saved),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = FlashPrimary),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(stringResource(R.string.remote_ai_save_config))
+                        }
                     }
                 }
             }
 
             Spacer(Modifier.height(12.dp))
 
-            // Card 4: 电池无限制
             SettingsCard {
                 Row(
                     Modifier

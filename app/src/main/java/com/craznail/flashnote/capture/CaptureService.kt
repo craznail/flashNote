@@ -221,19 +221,31 @@ class CaptureService : Service() {
                             val useRemote =
                                 withSummary && prefs.isPremium && prefs.remoteAiEnabled.value
                             if (useRemote) {
-                                val remote = withContext(Dispatchers.IO) {
-                                    RemoteAiClient.summarize(ocr)
-                                }
-                                if (remote.isSuccess) {
-                                    summary = remote.getOrNull()
-                                    mode = SummaryMode.REMOTE
-                                } else {
+                                if (!RemoteAiClient.isConfigured(prefs)) {
                                     summary = LocalSummary.fromOcr(ocr)
                                     if (summary != null) {
                                         mode = SummaryMode.LOCAL
-                                        toastMsg = getString(R.string.remote_fallback_local)
+                                    }
+                                    toastMsg = getString(R.string.remote_not_configured)
+                                } else {
+                                    OverlayService.notifyToast(
+                                        this@CaptureService,
+                                        getString(R.string.summarizing_remote)
+                                    )
+                                    val remote = withContext(Dispatchers.IO) {
+                                        RemoteAiClient.summarize(prefs, ocr)
+                                    }
+                                    if (remote.isSuccess) {
+                                        summary = remote.getOrNull()
+                                        mode = SummaryMode.REMOTE
                                     } else {
-                                        toastMsg = getString(R.string.remote_fallback_image)
+                                        summary = LocalSummary.fromOcr(ocr)
+                                        if (summary != null) {
+                                            mode = SummaryMode.LOCAL
+                                            toastMsg = getString(R.string.remote_fallback_local)
+                                        } else {
+                                            toastMsg = getString(R.string.remote_fallback_image)
+                                        }
                                     }
                                 }
                             } else {

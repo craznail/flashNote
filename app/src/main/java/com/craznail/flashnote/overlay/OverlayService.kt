@@ -74,6 +74,10 @@ class OverlayService : Service() {
                     thumbnailPath = null
                 )
             }
+            ACTION_SHOW_TOAST -> {
+                val toast = intent.getStringExtra(EXTRA_TOAST) ?: return START_STICKY
+                ballView?.showPlainToast(toast, durationMs = 28_000L)
+            }
         }
         return START_STICKY
     }
@@ -159,6 +163,7 @@ class OverlayService : Service() {
         const val ACTION_SHOW_UNAUTHORIZED = "com.craznail.flashnote.SHOW_UNAUTHORIZED"
         const val ACTION_PROJECTION_READY = "com.craznail.flashnote.PROJECTION_READY"
         const val ACTION_PROJECTION_LOST = "com.craznail.flashnote.PROJECTION_LOST"
+        const val ACTION_SHOW_TOAST = "com.craznail.flashnote.SHOW_TOAST"
         const val EXTRA_IMAGE_PATH = "imagePath"
         const val EXTRA_TOAST = "toastText"
         private const val NOTIF_ID = 1001
@@ -209,6 +214,15 @@ class OverlayService : Service() {
             context.startService(
                 Intent(context, OverlayService::class.java)
                     .setAction(ACTION_PROJECTION_LOST)
+            )
+        }
+
+        /** Tip / loading toast without save-success green check. */
+        fun notifyToast(context: Context, text: String) {
+            context.startService(
+                Intent(context, OverlayService::class.java)
+                    .setAction(ACTION_SHOW_TOAST)
+                    .putExtra(EXTRA_TOAST, text)
             )
         }
 

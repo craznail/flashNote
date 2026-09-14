@@ -49,6 +49,9 @@ class MainActivity : ComponentActivity() {
                 val localSummary by app.prefs.localSummaryEnabled.collectAsState()
                 val simulatePremium by app.prefs.simulatePremium.collectAsState()
                 val remoteAi by app.prefs.remoteAiEnabled.collectAsState()
+                val remoteBaseUrl by app.prefs.remoteAiBaseUrlFlow.collectAsState()
+                val remoteApiKey by app.prefs.remoteAiApiKeyFlow.collectAsState()
+                val remoteModel by app.prefs.remoteAiModelFlow.collectAsState()
 
                 when {
                     showSettings -> {
@@ -56,9 +59,15 @@ class MainActivity : ComponentActivity() {
                             localSummaryEnabled = localSummary,
                             simulatePremium = simulatePremium,
                             remoteAiEnabled = remoteAi,
+                            remoteAiBaseUrl = remoteBaseUrl,
+                            remoteAiApiKey = remoteApiKey,
+                            remoteAiModel = remoteModel,
                             onLocalSummaryChange = { app.prefs.setLocalSummaryEnabled(it) },
                             onSimulatePremiumChange = { app.prefs.setSimulatePremium(it) },
                             onRemoteAiChange = { app.prefs.setRemoteAiEnabled(it) },
+                            onSaveRemoteAiConfig = { url, key, model ->
+                                app.prefs.setRemoteAiConfig(url, key, model)
+                            },
                             onOpenBatterySettings = { openBatteryUnrestricted() },
                             onBack = { showSettings = false }
                         )

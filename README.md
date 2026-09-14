@@ -94,9 +94,24 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## Slice ④ — Remote AI (paid path)
 
 - Settings: 「模拟付费」unlocks 「远端 AI 概要」 (real IAP later).
-- Long-press 「存图+摘要」 with remote on → cloud/stand-in; fail → local summary toast, never blocks browsing.
-- Request body only `{ "text": "<ocr>" }` when `REMOTE_AI_ENDPOINT` is set in `build.gradle.kts`; empty endpoint uses QA stand-in prefixed `【远端】`.
-- Turning local summary off + not long-pressing summary → image only.
+- Long-press 「存图+摘要」 with premium + remote on → real OpenAI-compatible Chat Completions; toast「摘要生成中」; fail → local summary + tip; screenshot always saved.
+- Missing Base URL / API Key → tip「未配置远端 API…」(no silent fake success; QA `【远端】` stand-in removed).
+- Request sends OCR text only (in `messages`); no images / device ids.
+- Image-only / summary-off paths never call remote.
+
+### 配置远端 API（Key 勿提交 git）
+
+1. 打开应用 → 设置 → 打开「模拟付费」→ 打开「远端 AI 概要」。
+2. 填写 **Base URL**（如 `https://api.openai.com/v1`，或完整 `.../chat/completions`）、**API Key**、**模型**（默认 `gpt-4o-mini`）→「保存 API 配置」。
+3. （可选）构建默认值可写在本机 `local.properties`（已 gitignore）：
+
+```properties
+REMOTE_AI_ENDPOINT=https://api.openai.com/v1
+REMOTE_AI_API_KEY=sk-...
+REMOTE_AI_MODEL=gpt-4o-mini
+```
+
+仅当 SharedPreferences 对应项为空时才会用到上述 BuildConfig 默认值。
 
 
 ## P0 — One MediaProjection consent per process
