@@ -43,8 +43,9 @@
     <string name="remote_ai_locked">需先打开「模拟付费」</string>
     <string name="remote_fallback_local">远端失败，已用本地摘要</string>
     <string name="remote_fallback_image">远端失败，已只存图/OCR</string>
-    <string name="continuous_capture_ready">可连续截屏</string>
+    <string name="continuous_capture_ready">授权成功，现可连续截屏</string>
     <string name="projection_lost_reauth">截屏授权已失效，再点一次重新授权</string>
     <string name="notification_capture_holding_title">闪记截屏已授权</string>
     <string name="notification_capture_holding_text">可连续截屏，关闭悬浮球后结束</string>
+    <string name="app_version">版本 %1$s (%2$d)</string>
 </resources>

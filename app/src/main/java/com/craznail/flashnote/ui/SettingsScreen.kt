@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.craznail.flashnote.BuildConfig
 import com.craznail.flashnote.R
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,6 +92,16 @@ fun SettingsScreen(
                 text = stringResource(R.string.premium_stub),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+            )
+            Text(
+                text = stringResource(
+                    R.string.app_version,
+                    BuildConfig.VERSION_NAME,
+                    BuildConfig.VERSION_CODE
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                modifier = Modifier.padding(top = 12.dp)
             )
         }
     }

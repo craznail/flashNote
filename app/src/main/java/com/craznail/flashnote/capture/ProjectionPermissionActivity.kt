@@ -7,11 +7,14 @@ import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import com.craznail.flashnote.overlay.OverlayService
 
 /**
- * One-shot MediaProjection consent. Prefer entire screen on Android 14+.
- * After grant, CaptureService keeps the token for the process lifetime.
+ * One-shot MediaProjection consent.
+ * API 34+: MUST use createConfigForDefaultDisplay() so the system dialog
+ * only offers whole-screen capture (no「共享一个应用」/「下一步」 path on AOSP).
+ * Some OEMs may still show a picker — after grant, CaptureService holds the token.
  */
 class ProjectionPermissionActivity : Activity() {
 
@@ -20,21 +23,23 @@ class ProjectionPermissionActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Already holding a live token → should not reach here; finish quietly
+        withSummary = intent.getBooleanExtra(EXTRA_WITH_SUMMARY, false)
+        imageOnly = intent.getBooleanExtra(EXTRA_IMAGE_ONLY, false)
+
         if (CaptureService.hasActiveProjection()) {
+            Log.i(TAG, "reuse active MediaProjection — skip consent UI")
             CaptureService.startCapture(this, withSummary, imageOnly)
             finish()
             return
         }
-        withSummary = intent.getBooleanExtra(EXTRA_WITH_SUMMARY, false)
-        imageOnly = intent.getBooleanExtra(EXTRA_IMAGE_ONLY, false)
+
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        val captureIntent = if (Build.VERSION.SDK_INT >= 34) {
-            // Prefer whole screen — avoid "共享一个应用" friction on Android 14+
-            mpm.createScreenCaptureIntent(
-                MediaProjectionConfig.createConfigForDefaultDisplay()
-            )
+        val captureIntent: Intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val config = MediaProjectionConfig.createConfigForDefaultDisplay()
+            Log.i(TAG, "API34+ whole-display MediaProjectionConfig")
+            mpm.createScreenCaptureIntent(config)
         } else {
+            Log.i(TAG, "pre-34 default createScreenCaptureIntent")
             @Suppress("DEPRECATION")
             mpm.createScreenCaptureIntent()
         }
@@ -56,6 +61,7 @@ class ProjectionPermissionActivity : Activity() {
     }
 
     companion object {
+        private const val TAG = "FlashNote.Projection"
         private const val REQ = 9001
         const val EXTRA_WITH_SUMMARY = "withSummary"
         const val EXTRA_IMAGE_ONLY = "imageOnly"
