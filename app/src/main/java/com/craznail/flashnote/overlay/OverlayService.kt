@@ -91,7 +91,7 @@ class OverlayService : Service() {
         val notification: Notification = NotificationCompat.Builder(this, FlashNoteApp.CHANNEL_OVERLAY)
             .setContentTitle(getString(R.string.notification_overlay_title))
             .setContentText(getString(R.string.notification_overlay_text))
-            .setSmallIcon(R.drawable.ic_flash_note)
+            .setSmallIcon(R.drawable.ic_stat_flash_note)
             .setContentIntent(pi)
             .setOngoing(true)
             .build()

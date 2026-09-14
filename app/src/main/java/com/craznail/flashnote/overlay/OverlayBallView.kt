@@ -90,20 +90,16 @@ class OverlayBallView @JvmOverloads constructor(
             elevation = 6 * density
         }
 
+        // Brand logo already circular; no white plate / tint
         ballBg = View(context).apply {
             layoutParams = LayoutParams(ballSizePx, ballSizePx)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(0xE6FFFFFF.toInt()) // semi-transparent white
-            }
+            visibility = View.GONE
         }
 
         iconView = ImageView(context).apply {
-            val pad = (14 * density).roundToInt()
             layoutParams = LayoutParams(ballSizePx, ballSizePx)
-            setPadding(pad, pad, pad, pad)
             setImageResource(R.drawable.ic_flash_note)
-            setColorFilter(PRIMARY_BLUE)
+            scaleType = ImageView.ScaleType.FIT_XY
             contentDescription = context.getString(R.string.app_name)
         }
 

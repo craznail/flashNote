@@ -117,7 +117,7 @@ class CaptureService : Service() {
         val notification: Notification = NotificationCompat.Builder(this, FlashNoteApp.CHANNEL_CAPTURE)
             .setContentTitle(getString(R.string.notification_capture_holding_title))
             .setContentText(getString(R.string.notification_capture_holding_text))
-            .setSmallIcon(R.drawable.ic_flash_note)
+            .setSmallIcon(R.drawable.ic_stat_flash_note)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
