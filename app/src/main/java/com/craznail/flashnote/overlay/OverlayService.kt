@@ -36,11 +36,17 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Must hit startForeground before ANY heavy UI work — TCG/slow devices
+        // otherwise trip ForegroundServiceDidNotStartInTimeException (~5–10s).
         startAsForeground()
-        showBall()
+        // Defer WindowManager ball attach so onCreate returns immediately.
+        android.os.Handler(android.os.Looper.getMainLooper()).post { showBall() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Re-assert FGS promptly if we were started via startForegroundService
+        // while already created (e.g. notifySaved) — cheap if already foreground.
+        startAsForeground()
         when (intent?.action) {
             ACTION_STOP -> {
                 stopSelf()
@@ -61,22 +67,18 @@ class OverlayService : Service() {
             ACTION_PROJECTION_READY -> {
                 if (!showedContinuousTip) {
                     showedContinuousTip = true
-                    ballView?.showSuccessFeedback(
-                        toastText = getString(R.string.continuous_capture_ready),
-                        thumbnailPath = null
-                    )
+                    // System tip only — no green check (locked UI)
+                    ballView?.showSystemTip(getString(R.string.continuous_capture_ready))
                 }
             }
             ACTION_PROJECTION_LOST -> {
                 showedContinuousTip = false
-                ballView?.showSuccessFeedback(
-                    toastText = getString(R.string.projection_lost_reauth),
-                    thumbnailPath = null
-                )
+                ballView?.showSystemTip(getString(R.string.projection_lost_reauth))
             }
             ACTION_SHOW_TOAST -> {
                 val toast = intent.getStringExtra(EXTRA_TOAST) ?: return START_STICKY
-                ballView?.showPlainToast(toast, durationMs = 2_500L)
+                // Remote loading / fallback tips stay as compact side pills (1.2s)
+                ballView?.showPlainToast(toast, durationMs = 1_200L)
             }
         }
         return START_STICKY
@@ -109,6 +111,7 @@ class OverlayService : Service() {
     }
 
     private fun showBall() {
+        if (ballView != null) return
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         ballView = OverlayBallView(this).also { ball ->
             ball.onTap = {

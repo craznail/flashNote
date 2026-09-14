@@ -32,8 +32,8 @@ android {
         applicationId = "com.craznail.flashnote"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.1.8"
+        versionCode = 9
+        versionName = "0.1.9"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "IS_PREMIUM", "false")
         // Optional build defaults from local.properties; prefs override at runtime.

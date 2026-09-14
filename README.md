@@ -35,9 +35,10 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 2. 点击「开启悬浮球」。若未授权「显示在其他应用上层」，会跳转系统设置。
 3. 首次点击悬浮球：系统弹出 **屏幕录制 / MediaProjection** 授权框；同意后自动截一屏并保存。
 4. 之后点击悬浮球：直接截屏保存（MediaProjection 令牌仍有效时）。
-5. 成功：球心绿色对勾约 420ms + 底部 Toast「已保存到笔记」；可选右下角 24dp 缩略图角标。
-6. 拒绝授权：红点闪两次 + Toast「未授权截屏」；再点球可重新进入系统授权。
-7. 长按悬浮球约 400ms：弹出「只存图」「存图+摘要」（摘要生成为占位 no-op）。
+5. 成功：球心绿色对勾约 420ms（无中心 Toast / 无侧边 pill）；可选右下角 24dp 缩略图角标。
+6. 拒绝授权：球体红色闪约 350ms；再点球可重新进入系统授权。
+7. 系统 tip（仅授权成功 / 共享中断）：球旁短 pill（≤8 字，约 1.2s）。
+8. 长按悬浮球约 400ms：弹出「只存图」「存图+摘要」。
 
 ### 设置
 
@@ -55,10 +56,10 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Overlay → Capture → Save → Feedback 代码路径
 
-1. `OverlayService` + `OverlayBallView`：拖拽、贴边（露出 40dp）、点击/长按。
+1. `OverlayService` + `OverlayBallView`：46dp 球、贴边露出约 34dp、点击/长按（按下缩放 0.92）。
 2. 无 MediaProjection 令牌时 → `ProjectionPermissionActivity`（透明、用完即关）。
 3. `CaptureService`（`mediaProjection` FGS）→ `VirtualDisplay` + `ImageReader` → PNG 写入 `files/notes/`。
-4. `NoteRepository` / Room 插入行 → `OverlayService.notifySaved` → 绿勾 / Toast。
+4. `NoteRepository` / Room 插入行 → `OverlayService.notifySaved` → 球心绿勾 420ms（无中心弹层）。
 
 ## 国产 ROM 注意事项（MIUI / 华为 / HarmonyOS 等）
 
@@ -119,3 +120,39 @@ REMOTE_AI_MODEL=gpt-4o-mini
 - After first grant, `CaptureService` stays as MEDIA_PROJECTION FGS and reuses the token.
 - Subsequent ball taps do **not** open the system dialog until the process dies or the system revokes projection.
 - Android 14+: `MediaProjectionConfig.createConfigForDefaultDisplay()` prefers whole-screen capture.
+
+
+## Emulator self-test（box，勿打扰真机）
+
+```bash
+export ANDROID_HOME=/workspace/android-sdk
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+
+# 1) 保证只有一个健康 emulator
+adb devices -l
+# 若 offline / 重复 qemu：杀掉后冷启动
+# 本 box 若 nested KVM 崩溃（dmesg kvm_spurious_fault），用 -accel off（TCG，慢）
+# emulator -avd memtrain34 -no-window -no-audio -gpu swiftshader_indirect -no-boot-anim -accel off
+
+adb wait-for-device
+until [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == "1" ]]; do sleep 2; done
+
+# 2) 安装
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+# 3) 悬浮窗权限 + 启动
+adb shell appops set com.craznail.flashnote SYSTEM_ALERT_WINDOW allow
+adb shell am start -n com.craznail.flashnote/.MainActivity
+
+# 4) 权限 + 开悬浮球（服务 exported=false，用 Activity intent）
+adb shell pm grant com.craznail.flashnote android.permission.POST_NOTIFICATIONS
+adb shell am start -n com.craznail.flashnote/.MainActivity \
+  -a com.craznail.flashnote.START_OVERLAY --ez startOverlay true
+
+# 5) 冒烟：版本号；OverlayService isForeground；logcat 无 FATAL / FGS timeout
+adb shell dumpsys package com.craznail.flashnote | grep versionName
+adb shell dumpsys activity services com.craznail.flashnote | grep -A3 OverlayService
+adb logcat -d -s AndroidRuntime:E *:F | tail -50
+```
+
+Overlay 锁定规格：球 46dp / 贴边可见 34dp；成功仅绿勾 420ms；失败红闪 ~350ms；系统 tip 仅授权成功/共享中断（侧 pill ≤8 字、1.2s）。

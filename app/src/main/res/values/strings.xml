@@ -61,8 +61,8 @@
     <string name="remote_ai_save_config">保存 API 配置</string>
     <string name="remote_ai_config_saved">远端 API 配置已保存</string>
     <string name="remote_ai_config_section">OpenAI 兼容接口</string>
-    <string name="continuous_capture_ready">授权成功，现可连续截屏</string>
-    <string name="projection_lost_reauth">系统已中断屏幕共享，再点一次重新授权</string>
+    <string name="continuous_capture_ready">授权成功</string>
+    <string name="projection_lost_reauth">共享已中断</string>
     <string name="notification_capture_holding_title">闪记截屏已授权</string>
     <string name="notification_capture_holding_text">可连续截屏，关闭悬浮球后结束</string>
     <string name="app_version">版本号 v%1$s</string>

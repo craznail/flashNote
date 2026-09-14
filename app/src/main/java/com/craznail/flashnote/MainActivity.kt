@@ -142,4 +142,37 @@ class MainActivity : ComponentActivity() {
             startActivity(intent)
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        maybeStartOverlayFromIntent(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Defer FGS start until after first frame — avoids main-thread jam on cold start/TCG
+        maybeStartOverlayFromIntent(intent)
+    }
+
+    /** Emulator / automation: am start -n …/.MainActivity -a com.craznail.flashnote.START_OVERLAY */
+    private fun maybeStartOverlayFromIntent(intent: Intent?) {
+        if (intent?.action != ACTION_START_OVERLAY &&
+            intent?.getBooleanExtra(EXTRA_START_OVERLAY, false) != true
+        ) {
+            return
+        }
+        // Consume so we don't re-trigger on every resume
+        setIntent(Intent(intent).setAction(null).putExtra(EXTRA_START_OVERLAY, false))
+        window.decorView.post {
+            ensureOverlayPermission {
+                OverlayService.start(this)
+            }
+        }
+    }
+
+    companion object {
+        const val ACTION_START_OVERLAY = "com.craznail.flashnote.START_OVERLAY"
+        const val EXTRA_START_OVERLAY = "startOverlay"
+    }
 }

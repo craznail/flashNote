@@ -97,6 +97,8 @@ class CaptureService : Service() {
                 doCapture()
             }
             ACTION_STOP -> {
+                // If system restarted us as FGS for a pending STOP, promote first.
+                runCatching { startAsForeground() }
                 teardown()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
