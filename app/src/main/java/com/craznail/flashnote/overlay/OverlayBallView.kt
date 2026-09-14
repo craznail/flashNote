@@ -330,8 +330,10 @@ class OverlayBallView @JvmOverloads constructor(
             menuButtons.forEach {
                 it.visibility = View.INVISIBLE
                 it.alpha = 0f
-                it.scaleX = 0.4f
-                it.scaleY = 0.4f
+                it.scaleX = 0.85f
+                it.scaleY = 0.85f
+                it.translationX = 0f
+                it.translationY = 0f
             }
             shrinkWindowIfIdle(force = true)
         }
@@ -565,17 +567,25 @@ class OverlayBallView @JvmOverloads constructor(
             lp.width = subSizePx
             lp.height = subSizePx
             btn.layoutParams = lp
+            // Start near ball center, glide out along arc with soft scale/alpha (no bounce)
+            val fromTx = (cx - subSizePx / 2f) - bx
+            val fromTy = (cy - subSizePx / 2f) - by
+            btn.animate().cancel()
             btn.visibility = View.VISIBLE
             btn.alpha = 0f
-            btn.scaleX = 0.4f
-            btn.scaleY = 0.4f
+            btn.scaleX = 0.85f
+            btn.scaleY = 0.85f
+            btn.translationX = fromTx
+            btn.translationY = fromTy
             btn.animate()
                 .alpha(1f)
                 .scaleX(1f)
                 .scaleY(1f)
-                .setDuration(220)
-                .setStartDelay((i * 30).toLong())
-                .setInterpolator(DecelerateInterpolator())
+                .translationX(0f)
+                .translationY(0f)
+                .setDuration(260)
+                .setStartDelay((i * 28).toLong())
+                .setInterpolator(DecelerateInterpolator(1.5f))
                 .start()
         }
     }
@@ -589,24 +599,45 @@ class OverlayBallView @JvmOverloads constructor(
                 it.animate().cancel()
                 it.visibility = View.INVISIBLE
                 it.alpha = 0f
-                it.scaleX = 0.4f
-                it.scaleY = 0.4f
+                it.scaleX = 0.85f
+                it.scaleY = 0.85f
+                it.translationX = 0f
+                it.translationY = 0f
             }
             arcLayer.visibility = View.GONE
             shrinkWindowIfIdle()
             return
         }
-        var pending = menuButtons.size
-        menuButtons.forEach { btn ->
+        val dockLeft = isDockedLeft()
+        val winW = windowParams?.width ?: width
+        val winH = windowParams?.height ?: height
+        val cx = if (dockLeft) ballSizePx / 2f else winW - ballSizePx / 2f
+        val cy = winH / 2f
+        var pending = menuButtons.count { it.visibility == View.VISIBLE }
+        if (pending == 0) {
+            arcLayer.visibility = View.GONE
+            shrinkWindowIfIdle()
+            return
+        }
+        menuButtons.forEachIndexed { i, btn ->
+            if (btn.visibility != View.VISIBLE) return@forEachIndexed
+            val lp = btn.layoutParams as LayoutParams
+            val toTx = (cx - subSizePx / 2f) - lp.leftMargin
+            val toTy = (cy - subSizePx / 2f) - lp.topMargin
+            btn.animate().cancel()
             btn.animate()
                 .alpha(0f)
-                .scaleX(0.4f)
-                .scaleY(0.4f)
-                .setDuration(140)
-                .setStartDelay(0)
-                .setInterpolator(DecelerateInterpolator())
+                .scaleX(0.85f)
+                .scaleY(0.85f)
+                .translationX(toTx)
+                .translationY(toTy)
+                .setDuration(220)
+                .setStartDelay(((menuButtons.size - 1 - i) * 20).toLong().coerceAtLeast(0))
+                .setInterpolator(DecelerateInterpolator(1.5f))
                 .withEndAction {
                     btn.visibility = View.INVISIBLE
+                    btn.translationX = 0f
+                    btn.translationY = 0f
                     pending--
                     if (pending <= 0) {
                         arcLayer.visibility = View.GONE
