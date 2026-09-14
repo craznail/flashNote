@@ -28,12 +28,13 @@ import kotlin.math.roundToInt
 
 /**
  * Floating overlay ball — UI specs:
- * - 56dp diameter; when docked, 40dp remains visible (16dp overhang)
+ * - 46dp diameter; when docked, ~34dp remains visible
  * - Semi-transparent white bg + primary icon #3B82F6, elevation 6
  * - Drag follow finger; release snap L/R 200ms ease-out
  * - Click → screenshot; press scale 0.92, release spring back
- * - Success: green check flash 420ms at center; optional toast bar
- * - Failure: red-dot flash ×2 + toast「未授权截屏」
+ * - Success: green check flash 420ms only (no center toast)
+ * - Failure: red-dot flash ×2 only
+ * - Rare tips (auth/interrupt/remote): small side pill by the ball
  * - Long-press 400ms → 「只存图」/「存图+摘要」44dp buttons
  */
 class OverlayBallView @JvmOverloads constructor(
@@ -46,8 +47,8 @@ class OverlayBallView @JvmOverloads constructor(
     var onSaveImageAndSummary: (() -> Unit)? = null
 
     private val density = resources.displayMetrics.density
-    private val ballSizePx = (56 * density).roundToInt()
-    private val visibleWhenDockedPx = (40 * density).roundToInt()
+    private val ballSizePx = (46 * density).roundToInt()
+    private val visibleWhenDockedPx = (34 * density).roundToInt()
     private val overhangPx = ballSizePx - visibleWhenDockedPx // 16dp
     private val touchSlop = 8 * density
     private val longPressMs = 400L
@@ -148,25 +149,27 @@ class OverlayBallView @JvmOverloads constructor(
         toastBar = TextView(context).apply {
             layoutParams = LayoutParams(
                 LayoutParams.WRAP_CONTENT,
-                (40 * density).roundToInt()
+                (28 * density).roundToInt()
             ).apply {
-                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                topMargin = ballSizePx + (8 * density).roundToInt()
+                gravity = Gravity.CENTER_VERTICAL or Gravity.END
+                marginEnd = ballSizePx + (8 * density).roundToInt()
             }
-            maxWidth = (280 * density).roundToInt()
-            gravity = Gravity.CENTER
-            textSize = 13f
+            maxWidth = (160 * density).roundToInt()
+            maxLines = 2
+            gravity = Gravity.CENTER_VERTICAL
+            textSize = 11f
             setTextColor(Color.WHITE)
             setPadding(
-                (16 * density).roundToInt(), 0,
-                (16 * density).roundToInt(), 0
+                (10 * density).roundToInt(), 0,
+                (10 * density).roundToInt(), 0
             )
             background = GradientDrawable().apply {
-                cornerRadius = 12 * density
-                setColor(0xDD2E7D32.toInt())
+                cornerRadius = 14 * density
+                setColor(0xCC374151.toInt())
             }
             visibility = View.GONE
             alpha = 0f
+            elevation = 4 * density
         }
 
         actionMenu = LinearLayout(context).apply {
@@ -246,7 +249,7 @@ class OverlayBallView @JvmOverloads constructor(
         return params
     }
 
-    /** Success: green check flash 420ms at ball center, then restore. */
+    /** Success: green check flash 420ms at ball center only — no center toast. */
     fun showSuccessFeedback(toastText: String? = null, thumbnailPath: String? = null) {
         checkView.visibility = View.VISIBLE
         checkView.alpha = 1f
@@ -256,10 +259,10 @@ class OverlayBallView @JvmOverloads constructor(
             iconView.visibility = View.VISIBLE
         }, 420)
 
-        if (!toastText.isNullOrBlank()) {
-            showToastBar(toastText, 0xDD2E7D32.toInt())
-        } else {
-            showToastBar(context.getString(R.string.saved_to_notes), 0xDD2E7D32.toInt())
+        // Only rare non-save tips get a tiny side pill (auth / interrupt / remote fallback)
+        val savedDefault = context.getString(R.string.saved_to_notes)
+        if (!toastText.isNullOrBlank() && toastText != savedDefault) {
+            showSidePill(toastText, 0xCC374151.toInt(), 1600)
         }
 
         if (!thumbnailPath.isNullOrBlank() && File(thumbnailPath).exists()) {
@@ -267,10 +270,9 @@ class OverlayBallView @JvmOverloads constructor(
         }
     }
 
-    /** Failure: red-dot flash twice + toast「未授权截屏」. */
+    /** Failure: red-dot flash only. */
     fun showFailureUnauthorized() {
         flashRedDotTwice()
-        showToastBar(context.getString(R.string.unauthorized_capture), 0xDDC62828.toInt())
     }
 
     fun setThumbnailBadge(path: String) {
@@ -299,14 +301,30 @@ class OverlayBallView @JvmOverloads constructor(
         handler.postDelayed({ redDot.visibility = View.GONE }, 650)
     }
 
-    /** Plain tip toast (no green check) — loading / config tips. */
-    fun showPlainToast(text: String, durationMs: Long = 2500) {
-        showToastBar(text, 0xDD374151.toInt(), durationMs)
+    /** Light side pill by the ball (loading / config). Never a center-screen toast. */
+    fun showPlainToast(text: String, durationMs: Long = 1800) {
+        showSidePill(text, 0xCC374151.toInt(), durationMs)
     }
 
-    private fun showToastBar(text: String, bgColor: Int, durationMs: Long = 1200) {
+    private fun showSidePill(text: String, bgColor: Int, durationMs: Long = 1600) {
         hideToastRunnable?.let { handler.removeCallbacks(it) }
         expandWindowForExtras()
+        val lp = windowParams
+        val dm = resources.displayMetrics
+        if (lp != null) {
+            val onLeft = lp.x + ballSizePx / 2 < dm.widthPixels / 2
+            val tipLp = toastBar.layoutParams as LayoutParams
+            if (onLeft) {
+                tipLp.gravity = Gravity.CENTER_VERTICAL or Gravity.START
+                tipLp.marginStart = ballSizePx + (8 * density).roundToInt()
+                tipLp.marginEnd = 0
+            } else {
+                tipLp.gravity = Gravity.CENTER_VERTICAL or Gravity.END
+                tipLp.marginEnd = ballSizePx + (8 * density).roundToInt()
+                tipLp.marginStart = 0
+            }
+            toastBar.layoutParams = tipLp
+        }
         toastBar.text = text
         (toastBar.background as? GradientDrawable)?.setColor(bgColor)
         toastBar.visibility = View.VISIBLE
@@ -354,9 +372,10 @@ class OverlayBallView @JvmOverloads constructor(
     private fun expandWindowForExtras() {
         val lp = windowParams ?: return
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        // Wide enough for ball + 12dp + buttons (~96dp) or toast ≤280dp
-        val needW = (280 * density).roundToInt().coerceAtLeast(ballSizePx + (12 * density).roundToInt() + (96 * density).roundToInt())
-        val needH = ballSizePx + (8 * density).roundToInt() + (40 * density).roundToInt()
+        // Ball + side menu (~96dp) or compact side pill (~160dp)
+        val needW = (ballSizePx + (12 * density).roundToInt() + (160 * density).roundToInt())
+            .coerceAtLeast(ballSizePx + (12 * density).roundToInt() + (96 * density).roundToInt())
+        val needH = ballSizePx.coerceAtLeast((44 * 2 + 8).let { (it * density).roundToInt() })
         if (lp.width < needW || lp.height < needH) {
             // Keep ball visual position: when expanding leftward for right-docked ball
             val dm = resources.displayMetrics
@@ -375,7 +394,7 @@ class OverlayBallView @JvmOverloads constructor(
         val lp = windowParams ?: return
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val dm = resources.displayMetrics
-        // Re-dock: restore 56dp window with 40dp visible
+        // Re-dock: restore ball-sized window with ~34dp visible
         val centerX = lp.x + lp.width / 2
         val onRight = centerX >= dm.widthPixels / 2
         lp.width = ballSizePx

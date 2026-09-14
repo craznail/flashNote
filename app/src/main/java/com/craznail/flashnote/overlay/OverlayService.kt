@@ -76,7 +76,7 @@ class OverlayService : Service() {
             }
             ACTION_SHOW_TOAST -> {
                 val toast = intent.getStringExtra(EXTRA_TOAST) ?: return START_STICKY
-                ballView?.showPlainToast(toast, durationMs = 28_000L)
+                ballView?.showPlainToast(toast, durationMs = 2_500L)
             }
         }
         return START_STICKY
