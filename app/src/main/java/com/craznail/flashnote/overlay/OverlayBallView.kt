@@ -31,19 +31,20 @@ import kotlin.math.roundToInt
  * - 56dp diameter; when docked, 40dp remains visible (16dp overhang)
  * - Semi-transparent white bg + primary icon #3B82F6, elevation 6
  * - Drag follow finger; release snap L/R 200ms ease-out
- * - Click → screenshot; press scale 0.92, release spring back
- * - Success: green check flash 420ms at center; optional toast bar
+ * - Short tap → open app inbox; press scale 0.92, release spring back
+ * - Long-press 400ms → screenshot (follows summary settings); no menu
+ * - Success: green check flash 420ms; optional toast bar
  * - Failure: red-dot flash ×2 + toast「未授权截屏」
- * - Long-press 400ms → 「只存图」/「存图+摘要」44dp buttons
  */
 class OverlayBallView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : FrameLayout(context, attrs) {
 
+    /** Short tap: open app. */
     var onTap: (() -> Unit)? = null
-    var onSaveImageOnly: (() -> Unit)? = null
-    var onSaveImageAndSummary: (() -> Unit)? = null
+    /** Long press: capture screenshot. */
+    var onLongPressCapture: (() -> Unit)? = null
 
     private val density = resources.displayMetrics.density
     private val ballSizePx = (56 * density).roundToInt()
@@ -53,7 +54,7 @@ class OverlayBallView @JvmOverloads constructor(
     private val longPressMs = 400L
 
     private val rootContainer: FrameLayout
-    private val ballContainer: FrameLayout
+    private lateinit var ballContainer: FrameLayout
     private val ballBg: View
     private val iconView: ImageView
     private val checkView: ImageView
@@ -74,7 +75,7 @@ class OverlayBallView @JvmOverloads constructor(
     private val longPressRunnable = Runnable {
         if (!moved) {
             longPressFired = true
-            showActionMenu()
+            onLongPressCapture?.invoke()
         }
     }
 
@@ -167,26 +168,11 @@ class OverlayBallView @JvmOverloads constructor(
             alpha = 0f
         }
 
+        // Long-press menu removed: long-press captures directly (settings control summary).
         actionMenu = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LayoutParams(
-                LayoutParams.WRAP_CONTENT,
-                LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = Gravity.CENTER_VERTICAL or Gravity.END
-                marginStart = ballSizePx + (12 * density).roundToInt()
-            }
+            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
             visibility = View.GONE
-            addView(makeActionButton(context.getString(R.string.action_image_only)) {
-                hideActionMenu()
-                onSaveImageOnly?.invoke() ?: onTap?.invoke()
-            })
-            val summaryBtn = makeActionButton(context.getString(R.string.action_image_summary)) {
-                hideActionMenu()
-                onSaveImageAndSummary?.invoke() ?: onTap?.invoke()
-            }
-            (summaryBtn.layoutParams as LinearLayout.LayoutParams).topMargin = (8 * density).roundToInt()
-            addView(summaryBtn)
         }
 
         addView(ballContainer)
@@ -195,26 +181,6 @@ class OverlayBallView @JvmOverloads constructor(
 
         isClickable = true
         isFocusable = true
-    }
-
-    private fun makeActionButton(label: String, onClick: (() -> Unit)? = null): TextView {
-        return TextView(context).apply {
-            text = label
-            textSize = 12f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            val h = (44 * density).roundToInt()
-            layoutParams = LinearLayout.LayoutParams(
-                (96 * density).roundToInt(), h
-            )
-            background = GradientDrawable().apply {
-                cornerRadius = 10 * density
-                setColor(0xE63B82F6.toInt())
-            }
-            setPadding((10 * density).roundToInt(), 0, (10 * density).roundToInt(), 0)
-            if (onClick != null) setOnClickListener { onClick() }
-            elevation = 4 * density
-        }
     }
 
     fun attach(wm: WindowManager): WindowManager.LayoutParams {
@@ -425,10 +391,9 @@ class OverlayBallView @JvmOverloads constructor(
                     .start()
 
                 when {
-                    longPressFired && menuVisible -> {
-                        // Keep menu; outside next down dismisses
+                    longPressFired -> {
+                        // Capture already fired on long-press
                     }
-                    longPressFired -> { /* menu already shown */ }
                     !moved && event.actionMasked == MotionEvent.ACTION_UP -> {
                         onTap?.invoke()
                     }

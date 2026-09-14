@@ -26,10 +26,6 @@ class OverlayService : Service() {
     private var ballView: OverlayBallView? = null
     private var windowManager: WindowManager? = null
 
-    /** When true, next capture requests local summary (prefs may also enable). */
-    @Volatile private var wantSummary = false
-    /** When true, skip OCR and summary — image only. */
-    @Volatile private var wantImageOnly = false
     @Volatile private var showedContinuousTip = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -107,39 +103,38 @@ class OverlayService : Service() {
     private fun showBall() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         ballView = OverlayBallView(this).also { ball ->
-            ball.onTap = {
-                wantSummary = false
-                wantImageOnly = false
-                triggerCapture()
-            }
-            ball.onSaveImageOnly = {
-                wantSummary = false
-                wantImageOnly = true
-                triggerCapture()
-            }
-            ball.onSaveImageAndSummary = {
-                wantSummary = true
-                wantImageOnly = false
-                triggerCapture()
-            }
+            ball.onTap = { openAppInbox() }
+            ball.onLongPressCapture = { triggerCapture() }
             ball.attach(windowManager!!)
         }
     }
 
+    private fun openAppInbox() {
+        startActivity(
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+        )
+    }
+
+    /** Long-press capture: follow settings (local summary on/off); no forced menu. */
     private fun triggerCapture() {
         if (CaptureService.hasActiveProjection()) {
             CaptureService.startCapture(
                 this,
-                withSummary = wantSummary,
-                imageOnly = wantImageOnly
+                withSummary = false,
+                imageOnly = false
             )
         } else {
-            // No token → system MediaProjection consent (brief translucent activity)
             startActivity(
                 Intent(this, ProjectionPermissionActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    putExtra(ProjectionPermissionActivity.EXTRA_WITH_SUMMARY, wantSummary)
-                    putExtra(ProjectionPermissionActivity.EXTRA_IMAGE_ONLY, wantImageOnly)
+                    putExtra(ProjectionPermissionActivity.EXTRA_WITH_SUMMARY, false)
+                    putExtra(ProjectionPermissionActivity.EXTRA_IMAGE_ONLY, false)
                 }
             )
         }
