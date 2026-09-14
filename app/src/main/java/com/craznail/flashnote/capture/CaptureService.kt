@@ -26,10 +26,10 @@ import com.craznail.flashnote.FlashNoteApp
 import com.craznail.flashnote.R
 import com.craznail.flashnote.data.PreferencesManager
 import com.craznail.flashnote.data.SummaryMode
+import com.craznail.flashnote.overlay.OverlayService
 import com.craznail.flashnote.process.LocalOcr
 import com.craznail.flashnote.process.LocalSummary
 import com.craznail.flashnote.process.RemoteAiClient
-import com.craznail.flashnote.overlay.OverlayService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,7 +43,8 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * MediaProjection → PNG in app files → Room note → overlay「已保存到笔记」.
+ * Holds MediaProjection in an ongoing FGS for the process lifetime.
+ * Consent once → subsequent captures reuse the same token (no system dialog).
  */
 class CaptureService : Service() {
 
@@ -74,10 +75,12 @@ class CaptureService : Service() {
                 if (code == Activity.RESULT_OK && data != null) {
                     startAsForeground()
                     setupProjection(code, data)
+                    // First successful grant → tell ball it can capture continuously
+                    OverlayService.notifyProjectionReady(this)
                     mainHandler.postDelayed({ doCapture() }, 350)
                 } else {
                     OverlayService.notifyUnauthorized(this)
-                    stopSelf()
+                    if (!hasActiveProjection()) stopSelf()
                 }
             }
             ACTION_CAPTURE -> {
@@ -88,18 +91,28 @@ class CaptureService : Service() {
             }
             ACTION_STOP -> {
                 teardown()
+                stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
-            else -> stopSelf()
+            else -> {
+                // Keep service if we already hold projection
+                if (hasActiveProjection()) {
+                    startAsForeground()
+                } else {
+                    stopSelf()
+                }
+            }
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun startAsForeground() {
         val notification: Notification = NotificationCompat.Builder(this, FlashNoteApp.CHANNEL_CAPTURE)
-            .setContentTitle(getString(R.string.notification_capture_title))
+            .setContentTitle(getString(R.string.notification_capture_holding_title))
+            .setContentText(getString(R.string.notification_capture_holding_text))
             .setSmallIcon(R.drawable.ic_flash_note)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ServiceCompat.startForeground(
@@ -116,10 +129,18 @@ class CaptureService : Service() {
         projection?.stop()
         projection = mpm.getMediaProjection(resultCode, data)?.also { mp ->
             activeProjection = mp
+            cachedResultCode = resultCode
+            cachedResultData = data
             mp.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
+                    // System revoked (user stopped / process policy) → must re-consent
                     activeProjection = null
+                    projection = null
+                    cachedResultData = null
                     teardownDisplays()
+                    OverlayService.notifyProjectionLost(this@CaptureService)
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
                 }
             }, mainHandler)
         }
@@ -147,14 +168,12 @@ class CaptureService : Service() {
                     var summary: String? = null
                     var mode = SummaryMode.NONE
                     var toastMsg: String? = null
-                    // 关摘要且非长按「存图+摘要」→ 只存图
                     val summaryRequested =
                         withSummary || prefs.localSummaryEnabled.value
                     val skipText = imageOnly || (!withSummary && !prefs.localSummaryEnabled.value)
                     if (!skipText) {
                         ocr = withContext(Dispatchers.Default) { LocalOcr.recognize(bitmap) }
                         if (summaryRequested) {
-                            // 远端仅长按「存图+摘要」；单击仍走本地（若开）
                             val useRemote =
                                 withSummary && prefs.isPremium && prefs.remoteAiEnabled.value
                             if (useRemote) {
@@ -194,11 +213,7 @@ class CaptureService : Service() {
                 OverlayService.notifyUnauthorized(this@CaptureService)
             } finally {
                 capturing.set(false)
-                mainHandler.postDelayed({
-                    if (!capturing.get()) {
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                    }
-                }, 1500)
+                // Keep FGS + MediaProjection alive for the next tap — do NOT stopForeground.
             }
         }
     }
@@ -292,6 +307,7 @@ class CaptureService : Service() {
         projection?.stop()
         projection = null
         activeProjection = null
+        cachedResultData = null
     }
 
     override fun onDestroy() {
@@ -312,7 +328,19 @@ class CaptureService : Service() {
         @Volatile
         private var activeProjection: MediaProjection? = null
 
+        @Volatile
+        private var cachedResultCode: Int = Activity.RESULT_CANCELED
+
+        @Volatile
+        private var cachedResultData: Intent? = null
+
         fun hasActiveProjection(): Boolean = activeProjection != null
+
+        fun stop(context: Context) {
+            context.startService(
+                Intent(context, CaptureService::class.java).setAction(ACTION_STOP)
+            )
+        }
 
         fun startWithProjection(
             context: Context,

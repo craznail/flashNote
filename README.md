@@ -97,3 +97,10 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - Long-press 「存图+摘要」 with remote on → cloud/stand-in; fail → local summary toast, never blocks browsing.
 - Request body only `{ "text": "<ocr>" }` when `REMOTE_AI_ENDPOINT` is set in `build.gradle.kts`; empty endpoint uses QA stand-in prefixed `【远端】`.
 - Turning local summary off + not long-pressing summary → image only.
+
+
+## P0 — One MediaProjection consent per process
+
+- After first grant, `CaptureService` stays as MEDIA_PROJECTION FGS and reuses the token.
+- Subsequent ball taps do **not** open the system dialog until the process dies or the system revokes projection.
+- Android 14+: `MediaProjectionConfig.createConfigForDefaultDisplay()` prefers whole-screen capture.

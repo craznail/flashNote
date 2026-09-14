@@ -3,14 +3,15 @@ package com.craznail.flashnote.capture
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Bundle
 import com.craznail.flashnote.overlay.OverlayService
 
 /**
- * Transparent one-shot Activity for MediaProjection consent.
- * Finishes immediately after result so the ball does not steal focus long-term.
- * Denial → overlay failure feedback「未授权截屏」; tap ball again to re-enter.
+ * One-shot MediaProjection consent. Prefer entire screen on Android 14+.
+ * After grant, CaptureService keeps the token for the process lifetime.
  */
 class ProjectionPermissionActivity : Activity() {
 
@@ -19,11 +20,26 @@ class ProjectionPermissionActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Already holding a live token → should not reach here; finish quietly
+        if (CaptureService.hasActiveProjection()) {
+            CaptureService.startCapture(this, withSummary, imageOnly)
+            finish()
+            return
+        }
         withSummary = intent.getBooleanExtra(EXTRA_WITH_SUMMARY, false)
         imageOnly = intent.getBooleanExtra(EXTRA_IMAGE_ONLY, false)
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val captureIntent = if (Build.VERSION.SDK_INT >= 34) {
+            // Prefer whole screen — avoid "共享一个应用" friction on Android 14+
+            mpm.createScreenCaptureIntent(
+                MediaProjectionConfig.createConfigForDefaultDisplay()
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            mpm.createScreenCaptureIntent()
+        }
         @Suppress("DEPRECATION")
-        startActivityForResult(mpm.createScreenCaptureIntent(), REQ)
+        startActivityForResult(captureIntent, REQ)
     }
 
     @Deprecated("Deprecated in Java")

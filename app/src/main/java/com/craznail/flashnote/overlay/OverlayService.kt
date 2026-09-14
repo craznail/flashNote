@@ -30,6 +30,7 @@ class OverlayService : Service() {
     @Volatile private var wantSummary = false
     /** When true, skip OCR and summary — image only. */
     @Volatile private var wantImageOnly = false
+    @Volatile private var showedContinuousTip = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -56,6 +57,22 @@ class OverlayService : Service() {
             }
             ACTION_SHOW_UNAUTHORIZED -> {
                 ballView?.showFailureUnauthorized()
+            }
+            ACTION_PROJECTION_READY -> {
+                if (!showedContinuousTip) {
+                    showedContinuousTip = true
+                    ballView?.showSuccessFeedback(
+                        toastText = getString(R.string.continuous_capture_ready),
+                        thumbnailPath = null
+                    )
+                }
+            }
+            ACTION_PROJECTION_LOST -> {
+                showedContinuousTip = false
+                ballView?.showSuccessFeedback(
+                    toastText = getString(R.string.projection_lost_reauth),
+                    thumbnailPath = null
+                )
             }
         }
         return START_STICKY
@@ -129,6 +146,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        CaptureService.stop(this)
         ballView?.let { v -> runCatching { windowManager?.removeView(v) } }
         ballView = null
         windowManager = null
@@ -139,6 +157,8 @@ class OverlayService : Service() {
         const val ACTION_STOP = "com.craznail.flashnote.STOP_OVERLAY"
         const val ACTION_SHOW_SAVED = "com.craznail.flashnote.SHOW_SAVED"
         const val ACTION_SHOW_UNAUTHORIZED = "com.craznail.flashnote.SHOW_UNAUTHORIZED"
+        const val ACTION_PROJECTION_READY = "com.craznail.flashnote.PROJECTION_READY"
+        const val ACTION_PROJECTION_LOST = "com.craznail.flashnote.PROJECTION_LOST"
         const val EXTRA_IMAGE_PATH = "imagePath"
         const val EXTRA_TOAST = "toastText"
         private const val NOTIF_ID = 1001
@@ -175,6 +195,20 @@ class OverlayService : Service() {
             context.startService(
                 Intent(context, OverlayService::class.java)
                     .setAction(ACTION_SHOW_UNAUTHORIZED)
+            )
+        }
+
+        fun notifyProjectionReady(context: Context) {
+            context.startService(
+                Intent(context, OverlayService::class.java)
+                    .setAction(ACTION_PROJECTION_READY)
+            )
+        }
+
+        fun notifyProjectionLost(context: Context) {
+            context.startService(
+                Intent(context, OverlayService::class.java)
+                    .setAction(ACTION_PROJECTION_LOST)
             )
         }
 
