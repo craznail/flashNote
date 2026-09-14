@@ -1,0 +1,96 @@
+package com.craznail.flashnote
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.lifecycleScope
+import com.craznail.flashnote.overlay.OverlayService
+import com.craznail.flashnote.ui.NotesScreen
+import com.craznail.flashnote.ui.SettingsScreen
+import com.craznail.flashnote.ui.theme.FlashNoteTheme
+import kotlinx.coroutines.launch
+
+class MainActivity : ComponentActivity() {
+
+    private val notifPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* optional */ }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= 33) {
+            notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        val app = application as FlashNoteApp
+
+        setContent {
+            FlashNoteTheme {
+                var showSettings by remember { mutableStateOf(false) }
+                var overlayRunning by remember {
+                    mutableStateOf(OverlayService.isRunning(this@MainActivity))
+                }
+                val notes by app.notes.observeNotes().collectAsState(initial = emptyList())
+                val localSummary by app.prefs.localSummaryEnabled.collectAsState()
+
+                if (showSettings) {
+                    SettingsScreen(
+                        localSummaryEnabled = localSummary,
+                        isPremium = app.prefs.isPremium,
+                        onLocalSummaryChange = { app.prefs.setLocalSummaryEnabled(it) },
+                        onBack = { showSettings = false }
+                    )
+                } else {
+                    NotesScreen(
+                        notes = notes,
+                        overlayRunning = overlayRunning,
+                        onToggleOverlay = {
+                            if (overlayRunning) {
+                                OverlayService.stop(this@MainActivity)
+                                overlayRunning = false
+                            } else {
+                                ensureOverlayPermission {
+                                    OverlayService.start(this@MainActivity)
+                                    overlayRunning = true
+                                }
+                            }
+                        },
+                        onOpenSettings = { showSettings = true },
+                        onDelete = { note ->
+                            lifecycleScope.launch { app.notes.delete(note) }
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh overlay state when returning from settings
+    }
+
+    private fun ensureOverlayPermission(onGranted: () -> Unit) {
+        if (Settings.canDrawOverlays(this)) {
+            onGranted()
+        } else {
+            Toast.makeText(this, R.string.overlay_permission_needed, Toast.LENGTH_LONG).show()
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            startActivity(intent)
+        }
+    }
+}
