@@ -16,6 +16,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
+import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -57,17 +58,17 @@ class OverlayBallView @JvmOverloads constructor(
     private val arcRadiusPx = (64 * density).roundToInt()
     private val gapAlongArcDp = 9f // ~8–10dp chord spacing target via angle span
 
-    // Blue-white normal / green success / red failure; menu blue-white glass
-    private val fillNormal = 0x52E8F1FF.toInt()
-    private val strokeNormal = 0x73BFDBFE.toInt()
-    private val fillSuccess = 0xB34ADE80.toInt()
+    // UI lock: normal #E8F2FF α0.55 + stroke white α0.5; success/fail #22C55E/#EF4444 α0.72; menu α0.45
+    private val fillNormal = 0x8CE8F2FF.toInt()
+    private val strokeNormal = 0x80FFFFFF.toInt()
+    private val fillSuccess = 0xB822C55E.toInt()
     private val strokeSuccess = 0xE622C55E.toInt()
-    private val fillFailure = 0xB3F87171.toInt()
+    private val fillFailure = 0xB8EF4444.toInt()
     private val strokeFailure = 0xE6EF4444.toInt()
     private val fillMain = fillNormal
     private val strokeMain = strokeNormal
-    private val fillSub = 0x66E8F1FF.toInt()
-    private val strokeSub = 0x73BFDBFE.toInt()
+    private val fillSub = 0x73E8F2FF.toInt() // α0.45
+    private val strokeSub = 0x80FFFFFF.toInt()
 
     private val ballContainer: FrameLayout
     private val ballBg: View
@@ -102,8 +103,8 @@ class OverlayBallView @JvmOverloads constructor(
     private var failMenuMode = false
     private var colorAnimator: ValueAnimator? = null
     private var normalizeRunnable: Runnable? = null
-    private var currentFill: Int = 0x52E8F1FF.toInt()
-    private var currentStroke: Int = 0x73BFDBFE.toInt()
+    private var currentFill: Int = 0x8CE8F2FF.toInt()
+    private var currentStroke: Int = 0x80FFFFFF.toInt()
 
     private enum class BallMood { NORMAL, SUCCESS, FAILURE }
 
@@ -159,10 +160,10 @@ class OverlayBallView @JvmOverloads constructor(
         }
 
         thumbBadge = ImageView(context).apply {
-            val d = (20 * density).roundToInt()
+            val d = (14 * density).roundToInt()
             layoutParams = LayoutParams(d, d).apply {
                 gravity = Gravity.TOP or Gravity.END
-                setMargins(0, (-2 * density).roundToInt(), (-2 * density).roundToInt(), 0)
+                setMargins(0, (-1 * density).roundToInt(), (-1 * density).roundToInt(), 0)
             }
             visibility = View.GONE
             scaleType = ImageView.ScaleType.CENTER_CROP
@@ -366,12 +367,12 @@ class OverlayBallView @JvmOverloads constructor(
         if (!thumbnailPath.isNullOrBlank() && File(thumbnailPath).exists()) {
             setThumbnailBadge(thumbnailPath)
         }
-        scheduleNormalize(520L)
+        scheduleNormalize(700L)
         val tip = tipText?.takeIf { it.isNotBlank() }
         if (tip != null) {
             handler.postDelayed({
                 showSidePill(tip, 0xCC374151.toInt(), 1_600L, sticky = false)
-            }, 480L)
+            }, 650L)
         }
     }
 
@@ -387,6 +388,7 @@ class OverlayBallView @JvmOverloads constructor(
         failMenuMode = false
         checkView.visibility = View.GONE
         redDot.visibility = View.GONE
+        thumbBadge.visibility = View.GONE
         iconView.visibility = View.VISIBLE
         iconView.clearColorFilter()
         animateBallColors(fillFailure, strokeFailure, 160L)
@@ -399,14 +401,19 @@ class OverlayBallView @JvmOverloads constructor(
     fun setThumbnailBadge(path: String) {
         try {
             val bmp = android.graphics.BitmapFactory.decodeFile(path) ?: return
-            val size = (20 * density).roundToInt()
+            val size = (14 * density).roundToInt()
             val scaled = android.graphics.Bitmap.createScaledBitmap(bmp, size, size, true)
             if (scaled != bmp) bmp.recycle()
             val drawable = RoundedBitmapDrawableFactory.create(resources, scaled).apply {
                 isCircular = true
             }
             thumbBadge.setImageDrawable(drawable)
+            thumbBadge.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setStroke((1.5f * density).roundToInt().coerceAtLeast(1), 0xFFFFFFFF.toInt())
+            }
             thumbBadge.visibility = View.VISIBLE
+            thumbBadge.alpha = 1f
         } catch (_: Exception) {
             // ignore
         }
@@ -585,7 +592,7 @@ class OverlayBallView @JvmOverloads constructor(
                 .translationY(0f)
                 .setDuration(260)
                 .setStartDelay((i * 28).toLong())
-                .setInterpolator(DecelerateInterpolator(1.5f))
+                .setInterpolator(FastOutSlowInInterpolator())
                 .start()
         }
     }
@@ -633,7 +640,7 @@ class OverlayBallView @JvmOverloads constructor(
                 .translationY(toTy)
                 .setDuration(220)
                 .setStartDelay(((menuButtons.size - 1 - i) * 20).toLong().coerceAtLeast(0))
-                .setInterpolator(DecelerateInterpolator(1.5f))
+                .setInterpolator(FastOutSlowInInterpolator())
                 .withEndAction {
                     btn.visibility = View.INVISIBLE
                     btn.translationX = 0f
@@ -872,7 +879,7 @@ class OverlayBallView @JvmOverloads constructor(
         val r = Runnable {
             if (ballMood == BallMood.FAILURE) return@Runnable
             ballMood = BallMood.NORMAL
-            animateBallColors(fillNormal, strokeNormal, 480L)
+            animateBallColors(fillNormal, strokeNormal, 400L)
         }
         normalizeRunnable = r
         handler.postDelayed(r, delayMs)
