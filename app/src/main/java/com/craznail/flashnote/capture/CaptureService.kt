@@ -244,7 +244,7 @@ class CaptureService : Service() {
                                     }
                                     toastMsg = getString(R.string.remote_not_configured)
                                 } else {
-                                    OverlayService.notifyToast(
+                                    OverlayService.notifyLoading(
                                         this@CaptureService,
                                         getString(R.string.summarizing_remote)
                                     )
@@ -282,6 +282,7 @@ class CaptureService : Service() {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                // Clears sticky loading pill if remote was in-flight when capture errored.
                 OverlayService.notifyUnauthorized(this@CaptureService)
             } finally {
                 capturing.set(false)

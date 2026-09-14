@@ -85,6 +85,8 @@ class OverlayBallView @JvmOverloads constructor(
     private var hideToastRunnable: Runnable? = null
     private var exitArmRunnable: Runnable? = null
     private var capturingHidden = false
+    /** Sticky side pill (remote summarizing) — stays until clearSidePill / success / fail. */
+    private var pillSticky = false
 
     private val touchHotspotPx = (48 * density).roundToInt()
 
@@ -323,15 +325,16 @@ class OverlayBallView @JvmOverloads constructor(
         alpha = 1f
     }
 
-    /** Success: green check 420ms at ball center only. */
-    fun showSuccessFeedback(toastText: String? = null, thumbnailPath: String? = null) {
+    /**
+     * Success: green check 420ms at ball center only (no center toast).
+     * Clears any loading pill. Optional [tipText] shows as a light side pill after the check
+     * (fallback / not-configured tips only — never the default 「已保存」 copy).
+     */
+    fun showSuccessFeedback(tipText: String? = null, thumbnailPath: String? = null) {
+        clearSidePill(immediate = true)
         checkView.visibility = View.VISIBLE
         checkView.alpha = 1f
         iconView.visibility = View.INVISIBLE
-        hideToastRunnable?.let { handler.removeCallbacks(it) }
-        toastBar.animate().cancel()
-        toastBar.visibility = View.GONE
-        toastBar.alpha = 0f
         handler.postDelayed({
             checkView.visibility = View.GONE
             iconView.visibility = View.VISIBLE
@@ -340,14 +343,21 @@ class OverlayBallView @JvmOverloads constructor(
         if (!thumbnailPath.isNullOrBlank() && File(thumbnailPath).exists()) {
             setThumbnailBadge(thumbnailPath)
         }
+        val tip = tipText?.takeIf { it.isNotBlank() }
+        if (tip != null) {
+            handler.postDelayed({
+                showSidePill(tip, 0xCC374151.toInt(), 1_600L, sticky = false)
+            }, 440)
+        }
     }
 
     fun showFailureUnauthorized() {
+        clearSidePill(immediate = true)
         flashBallRed(350L)
     }
 
     fun showSystemTip(text: String, durationMs: Long = 1_200L) {
-        showSidePill(text, 0xCC374151.toInt(), durationMs)
+        showSidePill(text, 0xCC374151.toInt(), durationMs, sticky = false)
     }
 
     fun setThumbnailBadge(path: String) {
@@ -374,13 +384,49 @@ class OverlayBallView @JvmOverloads constructor(
         }, durationMs)
     }
 
+    /** Timed tip pill (exit confirm, projection tips, etc.). */
     fun showPlainToast(text: String, durationMs: Long = 1_200L) {
-        showSidePill(text, 0xCC374151.toInt(), durationMs)
+        showSidePill(text, 0xCC374151.toInt(), durationMs, sticky = false)
     }
 
-    private fun showSidePill(text: String, bgColor: Int, durationMs: Long = 1_200L) {
+    /**
+     * Light sticky loading pill while remote summary runs.
+     * Cleared by [clearSidePill], [showSuccessFeedback], or [showFailureUnauthorized].
+     * Safety auto-clear at 45s so a hung request never leaves the pill stuck.
+     */
+    fun showLoadingPill(text: String) {
+        showSidePill(text, 0xCC374151.toInt(), durationMs = 45_000L, sticky = true)
+    }
+
+    fun clearSidePill(immediate: Boolean = true) {
         hideToastRunnable?.let { handler.removeCallbacks(it) }
-        toastBar.maxWidth = (104 * density).roundToInt()
+        hideToastRunnable = null
+        pillSticky = false
+        toastBar.animate().cancel()
+        if (immediate || toastBar.visibility != View.VISIBLE) {
+            toastBar.visibility = View.GONE
+            toastBar.alpha = 0f
+            shrinkWindowIfIdle()
+        } else {
+            toastBar.animate().alpha(0f).setDuration(120).withEndAction {
+                toastBar.visibility = View.GONE
+                shrinkWindowIfIdle()
+            }.start()
+        }
+    }
+
+    private fun showSidePill(
+        text: String,
+        bgColor: Int,
+        durationMs: Long = 1_200L,
+        sticky: Boolean = false
+    ) {
+        hideToastRunnable?.let { handler.removeCallbacks(it) }
+        hideToastRunnable = null
+        pillSticky = sticky
+        // Loading stays compact; longer fallback tips get a bit more width, still one line.
+        val maxWDp = if (sticky) 112f else 148f
+        toastBar.maxWidth = (maxWDp * density).roundToInt()
         toastBar.maxLines = 1
         toastBar.ellipsize = TextUtils.TruncateAt.END
         val lp = windowParams
@@ -414,12 +460,14 @@ class OverlayBallView @JvmOverloads constructor(
         toastBar.alpha = 0f
         toastBar.animate().alpha(1f).setDuration(120).start()
         val hide = Runnable {
+            pillSticky = false
             toastBar.animate().alpha(0f).setDuration(160).withEndAction {
                 toastBar.visibility = View.GONE
                 shrinkWindowIfIdle()
             }.start()
         }
         hideToastRunnable = hide
+        // Sticky: safety timeout only; normal tips auto-dismiss.
         handler.postDelayed(hide, durationMs)
     }
 
@@ -547,7 +595,7 @@ class OverlayBallView @JvmOverloads constructor(
             needH = (2 * (arcRadiusPx + subSizePx / 2) + ballSizePx / 2)
                 .coerceAtLeast(touchHotspotPx)
         } else {
-            val sideExtra = 104
+            val sideExtra = 156
             needW = ballSizePx + (8 * density).roundToInt() + (sideExtra * density).roundToInt()
             needH = touchHotspotPx.coerceAtLeast(ballSizePx)
         }

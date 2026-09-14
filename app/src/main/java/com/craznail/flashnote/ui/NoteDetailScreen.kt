@@ -142,7 +142,7 @@ fun NoteDetailScreen(
             )
 
             if (hasSummary) {
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(14.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -185,7 +185,7 @@ fun NoteDetailScreen(
             }
 
             if (hasOcr) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),

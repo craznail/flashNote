@@ -62,13 +62,17 @@ class OverlayService : Service() {
             ACTION_SHOW_SAVED -> {
                 val path = intent.getStringExtra(EXTRA_IMAGE_PATH)
                 val toast = intent.getStringExtra(EXTRA_TOAST)
-                    ?: getString(R.string.saved_to_notes)
+                // Green check only on plain save; fallback / config tips ride as side pill.
+                val tip = toast?.takeIf {
+                    it.isNotBlank() && it != getString(R.string.saved_to_notes)
+                }
                 ballView?.showSuccessFeedback(
-                    toastText = toast,
+                    tipText = tip,
                     thumbnailPath = path
                 )
             }
             ACTION_SHOW_UNAUTHORIZED -> {
+                // Also clears any stuck remote-loading pill if capture failed mid-flight.
                 ballView?.showFailureUnauthorized()
             }
             ACTION_PROJECTION_READY -> {
@@ -84,8 +88,16 @@ class OverlayService : Service() {
             }
             ACTION_SHOW_TOAST -> {
                 val toast = intent.getStringExtra(EXTRA_TOAST) ?: return START_STICKY
-                // Remote loading / fallback tips stay as compact side pills (1.2s)
-                ballView?.showPlainToast(toast, durationMs = 1_200L)
+                val sticky = intent.getBooleanExtra(EXTRA_STICKY, false)
+                if (sticky) {
+                    // 「摘要生成中…」 — light sticky side pill until success/fail clears it
+                    ballView?.showLoadingPill(toast)
+                } else {
+                    ballView?.showPlainToast(toast, durationMs = 1_200L)
+                }
+            }
+            ACTION_CLEAR_TOAST -> {
+                ballView?.clearSidePill(immediate = true)
             }
         }
         return START_STICKY
@@ -188,8 +200,10 @@ class OverlayService : Service() {
         const val ACTION_PROJECTION_READY = "com.craznail.flashnote.PROJECTION_READY"
         const val ACTION_PROJECTION_LOST = "com.craznail.flashnote.PROJECTION_LOST"
         const val ACTION_SHOW_TOAST = "com.craznail.flashnote.SHOW_TOAST"
+        const val ACTION_CLEAR_TOAST = "com.craznail.flashnote.CLEAR_TOAST"
         const val EXTRA_IMAGE_PATH = "imagePath"
         const val EXTRA_TOAST = "toastText"
+        const val EXTRA_STICKY = "stickyToast"
         private const val NOTIF_ID = 1001
 
         @Volatile
@@ -269,12 +283,30 @@ class OverlayService : Service() {
             )
         }
 
-        /** Tip / loading toast without save-success green check. */
+        /** Timed tip pill (no green check). */
         fun notifyToast(context: Context, text: String) {
             context.startService(
                 Intent(context, OverlayService::class.java)
                     .setAction(ACTION_SHOW_TOAST)
                     .putExtra(EXTRA_TOAST, text)
+                    .putExtra(EXTRA_STICKY, false)
+            )
+        }
+
+        /** Sticky side pill while remote summary runs — cleared on save / fail. */
+        fun notifyLoading(context: Context, text: String) {
+            context.startService(
+                Intent(context, OverlayService::class.java)
+                    .setAction(ACTION_SHOW_TOAST)
+                    .putExtra(EXTRA_TOAST, text)
+                    .putExtra(EXTRA_STICKY, true)
+            )
+        }
+
+        fun clearToast(context: Context) {
+            context.startService(
+                Intent(context, OverlayService::class.java)
+                    .setAction(ACTION_CLEAR_TOAST)
             )
         }
 

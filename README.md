@@ -92,10 +92,15 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - Tap row → detail: full image + summary + OCR text.
 
 
+## 0.1.12 — Remote loading + inbox micro-polish
+
+- Sticky side pill for「摘要生成中…」(clears on green-check success / fail tip / capture fail); no center toast.
+- Inbox: Material card press ripple; swipe-delete reveal fades in with progress; slightly tighter list spacing.
+
 ## Slice ④ — Remote AI (paid path)
 
 - Settings: 「模拟付费」unlocks 「远端 AI 概要」 (real IAP later).
-- Arc menu 「存图+摘要」 with premium + remote on → real OpenAI-compatible Chat Completions; toast「摘要生成中」; fail → local summary + tip; screenshot always saved.
+- Arc menu 「存图+摘要」 with premium + remote on → real OpenAI-compatible Chat Completions; sticky side pill「摘要生成中…」while remote runs; success → green check only; fail → local summary + side-pill tip; screenshot always saved.
 - Missing Base URL / API Key → tip「未配置远端 API…」(no silent fake success; QA `【远端】` stand-in removed).
 - Request sends OCR text only (in `messages`); no images / device ids.
 - Image-only / summary-off paths never call remote.

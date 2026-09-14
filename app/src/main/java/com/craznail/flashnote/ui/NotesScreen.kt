@@ -2,7 +2,6 @@ package com.craznail.flashnote.ui
 
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -156,7 +156,7 @@ fun NotesScreen(
             } else {
                 LazyColumn(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(notes, key = { it.id }) { note ->
@@ -278,20 +278,35 @@ private fun SwipeDeleteNoteCard(
             }
         }
     )
-
     SwipeToDismissBox(
         state = dismissState,
         backgroundContent = {
+            // Light reveal: deepen red + icon as swipe approaches delete threshold.
+            val towardDelete =
+                dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
+            val reveal = if (towardDelete) {
+                dismissState.progress.coerceIn(0.2f, 1f)
+            } else {
+                0.2f
+            }
             Box(
                 Modifier
                     .fillMaxSize()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(FlashError)
-                    .padding(horizontal = 24.dp),
+                    .background(FlashError.copy(alpha = 0.35f + 0.65f * reveal))
+                    .padding(horizontal = 20.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.alpha(0.45f + 0.55f * reveal)
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
                     Text(
                         stringResource(R.string.delete_note),
                         color = Color.White,
@@ -314,17 +329,19 @@ private fun NoteCard(note: Note, onOpen: () -> Unit) {
     val timeLabel = relativeTime(note.createdAt)
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen),
+        onClick = onOpen,
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 1.dp,
+            pressedElevation = 0.dp
+        )
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 12.dp, vertical = 11.dp),
             verticalAlignment = Alignment.Top
         ) {
             AsyncImage(
