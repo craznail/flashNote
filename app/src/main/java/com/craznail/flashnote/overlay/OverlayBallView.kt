@@ -92,6 +92,9 @@ class OverlayBallView @JvmOverloads constructor(
     private var hideToastRunnable: Runnable? = null
     private var exitArmRunnable: Runnable? = null
     private var capturingHidden = false
+    /** Window x/y while collapsed (hotspot-sized); restored on menu dismiss so ball does not jump. */
+    private var collapsedWindowX: Int? = null
+    private var collapsedWindowY: Int? = null
     /** Sticky side pill (remote summarizing) — stays until clearSidePill / success / fail. */
     private var pillSticky = false
     private var ballMood = BallMood.NORMAL
@@ -633,6 +636,11 @@ class OverlayBallView @JvmOverloads constructor(
         val baseW = if (lp.width <= touchHotspotPx) touchHotspotPx else lp.width
         val dm = resources.displayMetrics
         if (lp.width < needW || lp.height < needH) {
+            // Remember collapsed origin once so shrink restores exact dock position (no upward jump).
+            if (lp.width <= touchHotspotPx && lp.height <= touchHotspotPx) {
+                collapsedWindowX = lp.x
+                collapsedWindowY = lp.y
+            }
             if (!dockLeft && lp.width <= touchHotspotPx) {
                 lp.x = (lp.x - (needW - baseW)).coerceAtLeast(0)
             } else if (dockLeft && lp.width <= touchHotspotPx) {
@@ -643,7 +651,7 @@ class OverlayBallView @JvmOverloads constructor(
             } else {
                 lp.x = lp.x.coerceAtMost(dm.widthPixels / 2 - needW / 2)
             }
-            // Keep vertical center roughly on ball
+            // Expand symmetrically around ball; y restored from collapsedWindowY on shrink.
             val extraH = (needH - lp.height).coerceAtLeast(0)
             if (extraH > 0 && lp.height <= touchHotspotPx) {
                 lp.y = (lp.y - extraH / 2).coerceAtLeast(0)
@@ -661,9 +669,20 @@ class OverlayBallView @JvmOverloads constructor(
         val dm = resources.displayMetrics
         val centerX = lp.x + lp.width / 2
         val onRight = centerX >= dm.widthPixels / 2
+        val restoreX = collapsedWindowX
+        val restoreY = collapsedWindowY
+        collapsedWindowX = null
+        collapsedWindowY = null
         lp.width = touchHotspotPx
         lp.height = touchHotspotPx
-        lp.x = if (onRight) dm.widthPixels - visibleWhenDockedPx else -overhangPx
+        // Restore pre-expand dock coords when available — never leave y shifted up after menu.
+        if (restoreY != null) {
+            lp.y = restoreY
+            lp.x = restoreX ?: (if (onRight) dm.widthPixels - visibleWhenDockedPx else -overhangPx)
+        } else {
+            lp.x = if (onRight) dm.widthPixels - visibleWhenDockedPx else -overhangPx
+            // leave lp.y unchanged
+        }
         val ballLp = ballContainer.layoutParams as LayoutParams
         ballLp.gravity = Gravity.CENTER
         ballContainer.layoutParams = ballLp
