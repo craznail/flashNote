@@ -9,6 +9,9 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.view.WindowManager
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.craznail.flashnote.FlashNoteApp
@@ -36,6 +39,7 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        setRunning(true)
         // Must hit startForeground before ANY heavy UI work — TCG/slow devices
         // otherwise trip ForegroundServiceDidNotStartInTimeException (~5–10s).
         startAsForeground()
@@ -157,6 +161,7 @@ class OverlayService : Service() {
         ballView?.let { v -> runCatching { windowManager?.removeView(v) } }
         ballView = null
         windowManager = null
+        setRunning(false)
         super.onDestroy()
     }
 
@@ -229,12 +234,14 @@ class OverlayService : Service() {
             )
         }
 
-        fun isRunning(context: Context): Boolean {
-            val am = context.getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
-            @Suppress("DEPRECATION")
-            return am.getRunningServices(50).any {
-                it.service.className == OverlayService::class.java.name
-            }
+        private val _running = MutableStateFlow(false)
+        /** True while OverlayService is alive — UI collects this for the inbox chip. */
+        val running: StateFlow<Boolean> = _running.asStateFlow()
+
+        private fun setRunning(value: Boolean) {
+            _running.value = value
         }
+
+        fun isRunning(@Suppress("UNUSED_PARAMETER") context: Context): Boolean = _running.value
     }
 }

@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.MotionEvent
@@ -155,8 +156,10 @@ class OverlayBallView @JvmOverloads constructor(
                 gravity = Gravity.CENTER_VERTICAL or Gravity.END
                 marginEnd = ballSizePx + (8 * density).roundToInt()
             }
-            maxWidth = (112 * density).roundToInt()
+            // Cap width so long remote tips never grow into a center-screen banner
+            maxWidth = (104 * density).roundToInt()
             maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
             gravity = Gravity.CENTER_VERTICAL
             textSize = 11f
             setTextColor(Color.WHITE)
@@ -321,13 +324,23 @@ class OverlayBallView @JvmOverloads constructor(
     private fun showSidePill(text: String, bgColor: Int, durationMs: Long = 1_200L) {
         hideToastRunnable?.let { handler.removeCallbacks(it) }
         // Compact pill: never expand wide enough to feel "center screen"
-        toastBar.maxWidth = (112 * density).roundToInt()
+        toastBar.maxWidth = (104 * density).roundToInt()
         toastBar.maxLines = 1
-        expandWindowForExtras(forMenu = false)
+        toastBar.ellipsize = TextUtils.TruncateAt.END
         val lp = windowParams
         val dm = resources.displayMetrics
+        val onLeft = if (lp != null) {
+            lp.x + (if (lp.width <= touchHotspotPx) ballSizePx else lp.width) / 2 < dm.widthPixels / 2
+        } else {
+            false
+        }
+        expandWindowForExtras(forMenu = false, dockLeft = onLeft)
         if (lp != null) {
-            val onLeft = lp.x + ballSizePx / 2 < dm.widthPixels / 2
+            // Ball stays on the dock edge of the expanded window (not CENTER → mid-screen)
+            val ballLp = ballContainer.layoutParams as LayoutParams
+            ballLp.gravity = Gravity.CENTER_VERTICAL or if (onLeft) Gravity.START else Gravity.END
+            ballContainer.layoutParams = ballLp
+
             val tipLp = toastBar.layoutParams as LayoutParams
             if (onLeft) {
                 tipLp.gravity = Gravity.CENTER_VERTICAL or Gravity.START
@@ -357,11 +370,14 @@ class OverlayBallView @JvmOverloads constructor(
 
     private fun showActionMenu() {
         menuVisible = true
-        expandWindowForExtras()
-        // Position menu 12dp from ball toward screen center
         val lp = windowParams ?: return
         val dm = resources.displayMetrics
-        val onLeft = lp.x + ballSizePx / 2 < dm.widthPixels / 2
+        val onLeft = lp.x + (if (lp.width <= touchHotspotPx) ballSizePx else lp.width) / 2 < dm.widthPixels / 2
+        expandWindowForExtras(forMenu = true, dockLeft = onLeft)
+        val ballLp = ballContainer.layoutParams as LayoutParams
+        ballLp.gravity = Gravity.CENTER_VERTICAL or if (onLeft) Gravity.START else Gravity.END
+        ballContainer.layoutParams = ballLp
+        // Position menu 12dp from ball toward screen center
         val menuLp = actionMenu.layoutParams as LayoutParams
         if (onLeft) {
             menuLp.gravity = Gravity.CENTER_VERTICAL or Gravity.START
@@ -384,11 +400,11 @@ class OverlayBallView @JvmOverloads constructor(
         shrinkWindowIfIdle()
     }
 
-    private fun expandWindowForExtras(forMenu: Boolean = true) {
+    private fun expandWindowForExtras(forMenu: Boolean = true, dockLeft: Boolean = false) {
         val lp = windowParams ?: return
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        // Menu needs ~96dp; system tip pill stays compact (~112dp) so it never feels center-screen
-        val sideExtra = if (forMenu) 96 else 112
+        // Menu ~96dp; tip pill capped ~104dp — dock-side only, never a center banner
+        val sideExtra = if (forMenu) 96 else 104
         val needW = ballSizePx + (8 * density).roundToInt() + (sideExtra * density).roundToInt()
         val needH = if (forMenu) {
             (44 * 2 + 8 + 12).let { (it * density).roundToInt() }.coerceAtLeast(touchHotspotPx)
@@ -398,9 +414,19 @@ class OverlayBallView @JvmOverloads constructor(
         val baseW = if (lp.width <= touchHotspotPx) touchHotspotPx else lp.width
         if (lp.width < needW || lp.height < needH) {
             val dm = resources.displayMetrics
-            val dockedRight = lp.x + visibleWhenDockedPx >= dm.widthPixels - 2
-            if (dockedRight && lp.width <= touchHotspotPx) {
-                lp.x = lp.x - (needW - baseW)
+            // Grow away from the dock edge so the ball stays visually on that side
+            if (!dockLeft && lp.width <= touchHotspotPx) {
+                // Right dock: shift window left so the right edge (ball) stays put
+                lp.x = (lp.x - (needW - baseW)).coerceAtLeast(0)
+            } else if (dockLeft && lp.width <= touchHotspotPx) {
+                // Left dock: keep x near left overhang; width grows toward center
+                lp.x = lp.x.coerceAtMost(0)
+            }
+            // Clamp so expanded window never drifts past mid-screen as a floating island
+            if (!dockLeft) {
+                lp.x = lp.x.coerceAtLeast(dm.widthPixels / 2)
+            } else {
+                lp.x = lp.x.coerceAtMost((dm.widthPixels / 2) - needW)
             }
             lp.width = needW
             lp.height = needH
@@ -419,6 +445,9 @@ class OverlayBallView @JvmOverloads constructor(
         lp.width = touchHotspotPx
         lp.height = touchHotspotPx
         lp.x = if (onRight) dm.widthPixels - visibleWhenDockedPx else -overhangPx
+        val ballLp = ballContainer.layoutParams as LayoutParams
+        ballLp.gravity = Gravity.CENTER
+        ballContainer.layoutParams = ballLp
         runCatching { wm.updateViewLayout(this, lp) }
     }
 

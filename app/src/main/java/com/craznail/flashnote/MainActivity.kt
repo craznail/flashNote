@@ -42,9 +42,8 @@ class MainActivity : ComponentActivity() {
             FlashNoteTheme {
                 var showSettings by remember { mutableStateOf(false) }
                 var selectedNote by remember { mutableStateOf<Note?>(null) }
-                var overlayRunning by remember {
-                    mutableStateOf(OverlayService.isRunning(this@MainActivity))
-                }
+                // Driven by OverlayService lifecycle — covers chip toggle AND START_OVERLAY intent
+                val overlayRunning by OverlayService.running.collectAsState()
                 val notes by app.notes.observeNotes().collectAsState(initial = emptyList())
                 val localSummary by app.prefs.localSummaryEnabled.collectAsState()
                 val simulatePremium by app.prefs.simulatePremium.collectAsState()
@@ -92,11 +91,9 @@ class MainActivity : ComponentActivity() {
                             onToggleOverlay = {
                                 if (overlayRunning) {
                                     OverlayService.stop(this@MainActivity)
-                                    overlayRunning = false
                                 } else {
                                     ensureOverlayPermission {
                                         OverlayService.start(this@MainActivity)
-                                        overlayRunning = true
                                     }
                                 }
                             },
