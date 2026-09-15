@@ -96,6 +96,7 @@ class OverlayBallView @JvmOverloads constructor(
     /** Window x/y while collapsed (hotspot-sized); restored on menu dismiss so ball does not jump. */
     private var collapsedWindowX: Int? = null
     private var collapsedWindowY: Int? = null
+    private var menuCollapsing = false
     /** Sticky side pill (remote summarizing) — stays until clearSidePill / success / fail. */
     private var pillSticky = false
     private var ballMood = BallMood.NORMAL
@@ -126,14 +127,16 @@ class OverlayBallView @JvmOverloads constructor(
         ballBg = View(context).apply {
             layoutParams = LayoutParams(ballSizePx, ballSizePx)
             background = glassOval(currentFill, currentStroke)
+            // Normal uses full circular logo asset; plate only for green/red states
+            visibility = View.GONE
         }
 
         iconView = ImageView(context).apply {
-            layoutParams = LayoutParams(iconMarkPx, iconMarkPx).apply {
+            layoutParams = LayoutParams(ballSizePx, ballSizePx).apply {
                 gravity = Gravity.CENTER
             }
-            setImageResource(R.drawable.ic_flash_note)
-            scaleType = ImageView.ScaleType.FIT_CENTER
+            setImageResource(R.drawable.ic_ball_normal)
+            scaleType = ImageView.ScaleType.FIT_XY
             contentDescription = context.getString(R.string.app_name)
         }
 
@@ -362,7 +365,7 @@ class OverlayBallView @JvmOverloads constructor(
         checkView.visibility = View.GONE
         redDot.visibility = View.GONE
         iconView.visibility = View.VISIBLE
-        iconView.clearColorFilter()
+        applyBallArt()
         animateBallColors(fillSuccess, strokeSuccess, 160L)
         if (!thumbnailPath.isNullOrBlank() && File(thumbnailPath).exists()) {
             setThumbnailBadge(thumbnailPath)
@@ -390,7 +393,7 @@ class OverlayBallView @JvmOverloads constructor(
         redDot.visibility = View.GONE
         thumbBadge.visibility = View.GONE
         iconView.visibility = View.VISIBLE
-        iconView.clearColorFilter()
+        applyBallArt()
         animateBallColors(fillFailure, strokeFailure, 160L)
     }
 
@@ -600,6 +603,7 @@ class OverlayBallView @JvmOverloads constructor(
     private fun hideActionMenu(animate: Boolean = true) {
         if (!menuVisible && arcLayer.visibility != View.VISIBLE) return
         menuVisible = false
+        menuCollapsing = true
         exitArmed = false
         if (!animate) {
             menuButtons.forEach {
@@ -661,7 +665,6 @@ class OverlayBallView @JvmOverloads constructor(
         val needW: Int
         val needH: Int
         if (forMenu) {
-            // ball + arc radius + half sub + padding
             val half = (arcRadiusPx + subSizePx / 2 + (8 * density).roundToInt())
             needW = ballSizePx + half + (4 * density).roundToInt()
             needH = (2 * (arcRadiusPx + subSizePx / 2) + ballSizePx / 2)
@@ -671,29 +674,29 @@ class OverlayBallView @JvmOverloads constructor(
             needW = ballSizePx + (8 * density).roundToInt() + (sideExtra * density).roundToInt()
             needH = touchHotspotPx.coerceAtLeast(ballSizePx)
         }
-        val baseW = if (lp.width <= touchHotspotPx) touchHotspotPx else lp.width
-        val dm = resources.displayMetrics
         if (lp.width < needW || lp.height < needH) {
-            // Remember collapsed origin once so shrink restores exact dock position (no upward jump).
-            if (lp.width <= touchHotspotPx && lp.height <= touchHotspotPx) {
-                collapsedWindowX = lp.x
-                collapsedWindowY = lp.y
+            // Lock dock origin once; never pull toward screen center.
+            if (collapsedWindowX == null || collapsedWindowY == null) {
+                if (lp.width <= touchHotspotPx && lp.height <= touchHotspotPx) {
+                    collapsedWindowX = lp.x
+                    collapsedWindowY = lp.y
+                } else {
+                    collapsedWindowX = lp.x
+                    collapsedWindowY = lp.y
+                }
             }
-            if (!dockLeft && lp.width <= touchHotspotPx) {
-                lp.x = (lp.x - (needW - baseW)).coerceAtLeast(0)
-            } else if (dockLeft && lp.width <= touchHotspotPx) {
-                lp.x = lp.x.coerceAtMost(0)
-            }
-            if (!dockLeft) {
-                lp.x = lp.x.coerceAtLeast(dm.widthPixels / 2 - needW / 4)
+            val originX = collapsedWindowX ?: lp.x
+            val originY = collapsedWindowY ?: lp.y
+            val baseW = touchHotspotPx
+            val baseH = touchHotspotPx
+            // Keep docked edge fixed: grow toward screen center only.
+            lp.x = if (dockLeft) {
+                originX
             } else {
-                lp.x = lp.x.coerceAtMost(dm.widthPixels / 2 - needW / 2)
+                originX - (needW - baseW)
             }
-            // Expand symmetrically around ball; y restored from collapsedWindowY on shrink.
-            val extraH = (needH - lp.height).coerceAtLeast(0)
-            if (extraH > 0 && lp.height <= touchHotspotPx) {
-                lp.y = (lp.y - extraH / 2).coerceAtLeast(0)
-            }
+            // Keep ball vertical center fixed while growing height.
+            lp.y = originY - (needH - baseH) / 2
             lp.width = needW
             lp.height = needH
             runCatching { wm.updateViewLayout(this, lp) }
@@ -701,30 +704,26 @@ class OverlayBallView @JvmOverloads constructor(
     }
 
     private fun shrinkWindowIfIdle(force: Boolean = false) {
-        if (!force && (menuVisible || toastBar.visibility == View.VISIBLE)) return
+        if (!force && (menuVisible || menuCollapsing || toastBar.visibility == View.VISIBLE)) return
         val lp = windowParams ?: return
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val dm = resources.displayMetrics
-        val centerX = lp.x + lp.width / 2
-        val onRight = centerX >= dm.widthPixels / 2
         val restoreX = collapsedWindowX
         val restoreY = collapsedWindowY
-        collapsedWindowX = null
-        collapsedWindowY = null
+        // Apply size + dock coords in one update — no intermediate center flash.
         lp.width = touchHotspotPx
         lp.height = touchHotspotPx
-        // Restore pre-expand dock coords when available — never leave y shifted up after menu.
-        if (restoreY != null) {
+        if (restoreX != null && restoreY != null) {
+            lp.x = restoreX
             lp.y = restoreY
-            lp.x = restoreX ?: (if (onRight) dm.widthPixels - visibleWhenDockedPx else -overhangPx)
-        } else {
-            lp.x = if (onRight) dm.widthPixels - visibleWhenDockedPx else -overhangPx
-            // leave lp.y unchanged
         }
+        // Keep collapsed coords until successfully restored (idempotent re-entry).
+        collapsedWindowX = null
+        collapsedWindowY = null
         val ballLp = ballContainer.layoutParams as LayoutParams
         ballLp.gravity = Gravity.CENTER
         ballContainer.layoutParams = ballLp
         runCatching { wm.updateViewLayout(this, lp) }
+        menuCollapsing = false
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -847,6 +846,7 @@ class OverlayBallView @JvmOverloads constructor(
         iconView.clearColorFilter()
         lastFailReason = null
         ballMood = BallMood.NORMAL
+        applyBallArt()
         animateBallColors(fillNormal, strokeNormal, 420L)
     }
 
@@ -879,10 +879,38 @@ class OverlayBallView @JvmOverloads constructor(
         val r = Runnable {
             if (ballMood == BallMood.FAILURE) return@Runnable
             ballMood = BallMood.NORMAL
+            applyBallArt()
             animateBallColors(fillNormal, strokeNormal, 400L)
         }
         normalizeRunnable = r
         handler.postDelayed(r, delayMs)
+    }
+
+
+    /** Normal = full circular logo; success/fail = colored plate + small mark. */
+    private fun applyBallArt() {
+        when (ballMood) {
+            BallMood.NORMAL -> {
+                ballBg.visibility = View.GONE
+                val lp = iconView.layoutParams as LayoutParams
+                lp.width = ballSizePx
+                lp.height = ballSizePx
+                iconView.layoutParams = lp
+                iconView.setImageResource(R.drawable.ic_ball_normal)
+                iconView.clearColorFilter()
+                iconView.scaleType = ImageView.ScaleType.FIT_XY
+            }
+            BallMood.SUCCESS, BallMood.FAILURE -> {
+                ballBg.visibility = View.VISIBLE
+                val lp = iconView.layoutParams as LayoutParams
+                lp.width = iconMarkPx
+                lp.height = iconMarkPx
+                iconView.layoutParams = lp
+                iconView.setImageResource(R.drawable.ic_flash_note)
+                iconView.clearColorFilter()
+                iconView.scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+        }
     }
 
     private fun animateBallColors(toFill: Int, toStroke: Int, durationMs: Long) {
