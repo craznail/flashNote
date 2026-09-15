@@ -94,8 +94,7 @@ class OverlayBallView @JvmOverloads constructor(
     private var exitArmRunnable: Runnable? = null
     private var capturingHidden = false
     /** Window x/y while collapsed (hotspot-sized); restored on menu dismiss so ball does not jump. */
-    private var collapsedWindowX: Int? = null
-    private var collapsedWindowY: Int? = null
+    /** True while collapse animation is in progress (blocks opportunistic shrink). */
     private var menuCollapsing = false
     /** Sticky side pill (remote summarizing) — stays until clearSidePill / success / fail. */
     private var pillSticky = false
@@ -484,9 +483,7 @@ class OverlayBallView @JvmOverloads constructor(
         }
         expandWindowForExtras(forMenu = false, dockLeft = onLeft)
         if (lp != null) {
-            val ballLp = ballContainer.layoutParams as LayoutParams
-            ballLp.gravity = Gravity.CENTER_VERTICAL or if (onLeft) Gravity.START else Gravity.END
-            ballContainer.layoutParams = ballLp
+            pinBallInWindow(onLeft, lp.width, lp.height)
 
             val tipLp = toastBar.layoutParams as LayoutParams
             if (onLeft) {
@@ -547,17 +544,89 @@ class OverlayBallView @JvmOverloads constructor(
         }
     }
 
+
+    /**
+     * On-screen top-left of the ball graphic (not the overlay window).
+     * Used as the stable anchor for expand/shrink so gravity/size changes cannot jump the ball.
+     */
+    private fun ballScreenLeftTop(): Pair<Int, Int> {
+        val wlp = windowParams ?: return 0 to 0
+        val blp = ballContainer.layoutParams as LayoutParams
+        val g = blp.gravity
+        val left = when {
+            (g and Gravity.END) == Gravity.END -> wlp.x + wlp.width - ballSizePx
+            (g and Gravity.START) == Gravity.START &&
+                (g and Gravity.CENTER_HORIZONTAL) != Gravity.CENTER_HORIZONTAL ->
+                wlp.x + blp.leftMargin
+            else -> wlp.x + (wlp.width - ballSizePx) / 2
+        }
+        val top = when {
+            (g and Gravity.TOP) == Gravity.TOP &&
+                (g and Gravity.CENTER_VERTICAL) != Gravity.CENTER_VERTICAL ->
+                wlp.y + blp.topMargin
+            else -> wlp.y + (wlp.height - ballSizePx) / 2
+        }
+        return left to top
+    }
+
+    /**
+     * Pin [ballContainer] with TOP|START margins so position is independent of gravity switches.
+     * @param dockLeft true/false = docked edge in an expanded window; null = centered (collapsed).
+     */
+    private fun pinBallInWindow(dockLeft: Boolean?, winW: Int, winH: Int) {
+        val blp = ballContainer.layoutParams as LayoutParams
+        blp.width = ballSizePx
+        blp.height = ballSizePx
+        blp.gravity = Gravity.TOP or Gravity.START
+        blp.leftMargin = when (dockLeft) {
+            true -> 0
+            false -> (winW - ballSizePx).coerceAtLeast(0)
+            null -> (winW - ballSizePx) / 2
+        }
+        blp.topMargin = (winH - ballSizePx) / 2
+        ballContainer.layoutParams = blp
+    }
+
+    /**
+     * Resize/move the overlay window so the ball's on-screen top-left stays at [ballLeft],[ballTop].
+     * @param dockLeft null → collapsed hotspot centered on the ball; true/false → expanded, ball on that edge.
+     */
+    private fun placeWindowAnchoredToBall(
+        ballLeft: Int,
+        ballTop: Int,
+        winW: Int,
+        winH: Int,
+        dockLeft: Boolean?
+    ) {
+        val lp = windowParams ?: return
+        val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        lp.width = winW
+        lp.height = winH
+        when (dockLeft) {
+            true -> {
+                lp.x = ballLeft
+                lp.y = ballTop - (winH - ballSizePx) / 2
+            }
+            false -> {
+                lp.x = ballLeft + ballSizePx - winW
+                lp.y = ballTop - (winH - ballSizePx) / 2
+            }
+            null -> {
+                lp.x = ballLeft - (winW - ballSizePx) / 2
+                lp.y = ballTop - (winH - ballSizePx) / 2
+            }
+        }
+        runCatching { wm.updateViewLayout(this, lp) }
+        pinBallInWindow(dockLeft, winW, winH)
+    }
+
     private fun showActionMenu() {
         menuVisible = true
         exitArmed = false
         val dockLeft = isDockedLeft()
-        // Pin ball to dock edge BEFORE expanding, or it flashes to window center.
-        val ballLp = ballContainer.layoutParams as LayoutParams
-        ballLp.gravity = Gravity.CENTER_VERTICAL or if (dockLeft) Gravity.START else Gravity.END
-        ballContainer.layoutParams = ballLp
         expandWindowForExtras(forMenu = true, dockLeft = dockLeft)
 
-        // Ball center inside expanded window
+        // Ball center inside expanded window (ball pinned to dock edge via margins)
         val winW = windowParams?.width ?: width
         val winH = windowParams?.height ?: height
         val cx = if (dockLeft) ballSizePx / 2f else winW - ballSizePx / 2f
@@ -661,7 +730,6 @@ class OverlayBallView @JvmOverloads constructor(
 
     private fun expandWindowForExtras(forMenu: Boolean = true, dockLeft: Boolean = false) {
         val lp = windowParams ?: return
-        val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val needW: Int
         val needH: Int
         if (forMenu) {
@@ -675,54 +743,26 @@ class OverlayBallView @JvmOverloads constructor(
             needH = touchHotspotPx.coerceAtLeast(ballSizePx)
         }
         if (lp.width < needW || lp.height < needH) {
-            // Lock dock origin once; never pull toward screen center.
-            if (collapsedWindowX == null || collapsedWindowY == null) {
-                if (lp.width <= touchHotspotPx && lp.height <= touchHotspotPx) {
-                    collapsedWindowX = lp.x
-                    collapsedWindowY = lp.y
-                } else {
-                    collapsedWindowX = lp.x
-                    collapsedWindowY = lp.y
-                }
-            }
-            val originX = collapsedWindowX ?: lp.x
-            val originY = collapsedWindowY ?: lp.y
-            val baseW = touchHotspotPx
-            val baseH = touchHotspotPx
-            // Keep docked edge fixed: grow toward screen center only.
-            lp.x = if (dockLeft) {
-                originX
-            } else {
-                originX - (needW - baseW)
-            }
-            // Keep ball vertical center fixed while growing height.
-            lp.y = originY - (needH - baseH) / 2
-            lp.width = needW
-            lp.height = needH
-            runCatching { wm.updateViewLayout(this, lp) }
+            // Anchor on the ball's current screen position — never on stale window x/y.
+            val (ballLeft, ballTop) = ballScreenLeftTop()
+            placeWindowAnchoredToBall(ballLeft, ballTop, needW, needH, dockLeft)
         }
     }
 
     private fun shrinkWindowIfIdle(force: Boolean = false) {
         if (!force && (menuVisible || menuCollapsing || toastBar.visibility == View.VISIBLE)) return
         val lp = windowParams ?: return
-        val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val restoreX = collapsedWindowX
-        val restoreY = collapsedWindowY
-        // Size + dock coords first — never change ball gravity while window is still expanded
-        // (that briefly centers the ball in the large window = flash to screen middle).
-        lp.width = touchHotspotPx
-        lp.height = touchHotspotPx
-        if (restoreX != null && restoreY != null) {
-            lp.x = restoreX
-            lp.y = restoreY
+        if (lp.width == touchHotspotPx && lp.height == touchHotspotPx) {
+            // Already collapsed — still normalize pin, clear collapsing flag.
+            pinBallInWindow(null, touchHotspotPx, touchHotspotPx)
+            menuCollapsing = false
+            return
         }
-        collapsedWindowX = null
-        collapsedWindowY = null
-        runCatching { wm.updateViewLayout(this, lp) }
-        val ballLp = ballContainer.layoutParams as LayoutParams
-        ballLp.gravity = Gravity.CENTER
-        ballContainer.layoutParams = ballLp
+        // Critical: measure ball where it is NOW (after drag / mid-collapse), then shrink
+        // the window around that screen point. Restoring expand-time window x/y was the
+        // jump: gravity CENTER vs START/END + stale Y from height growth.
+        val (ballLeft, ballTop) = ballScreenLeftTop()
+        placeWindowAnchoredToBall(ballLeft, ballTop, touchHotspotPx, touchHotspotPx, dockLeft = null)
         menuCollapsing = false
     }
 
@@ -748,17 +788,11 @@ class OverlayBallView @JvmOverloads constructor(
                 val dy = event.rawY - downRawY
                 if (abs(dx) > touchSlop || abs(dy) > touchSlop) {
                     if (!moved && menuVisible) {
-                        // Menu is open in an expanded window: rebase the drag origin to the
-                        // collapsed (hotspot-sized) window coords before collapsing clears
-                        // them — otherwise the ball jumps inward by the expansion amount and
-                        // snapToEdge then flies it back to the edge.
-                        startParamX = if (isDockedLeft()) {
-                            lp.x
-                        } else {
-                            lp.x + (lp.width - touchHotspotPx)
-                        }
-                        startParamY = lp.y + (lp.height - touchHotspotPx) / 2
+                        // Collapse onto the ball's current screen position first, then drag
+                        // from the resulting collapsed window coords (no inward jump).
                         hideActionMenu(animate = false)
+                        startParamX = lp.x
+                        startParamY = lp.y
                     }
                     moved = true
                 }
