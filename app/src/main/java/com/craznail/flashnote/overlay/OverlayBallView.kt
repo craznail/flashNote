@@ -88,10 +88,8 @@ class OverlayBallView @JvmOverloads constructor(
     private var startParamY = 0
     private var moved = false
     private var menuVisible = false
-    private var exitArmed = false
     private val handler = Handler(Looper.getMainLooper())
     private var hideToastRunnable: Runnable? = null
-    private var exitArmRunnable: Runnable? = null
     private var capturingHidden = false
     /** Window x/y while collapsed (hotspot-sized); restored on menu dismiss so ball does not jump. */
     /** True while collapse animation is in progress (blocks opportunistic shrink). */
@@ -282,18 +280,8 @@ class OverlayBallView @JvmOverloads constructor(
     }
 
     private fun handleExitTap() {
-        if (!exitArmed) {
-            exitArmed = true
-            showSystemTip(context.getString(R.string.exit_confirm_tip), 1_600L)
-            exitArmRunnable?.let { handler.removeCallbacks(it) }
-            val clear = Runnable { exitArmed = false }
-            exitArmRunnable = clear
-            handler.postDelayed(clear, 1_800L)
-            return
-        }
-        exitArmed = false
-        exitArmRunnable?.let { handler.removeCallbacks(it) }
-        hideActionMenu()
+        // Immediate exit — no second-tap confirm.
+        hideActionMenu(animate = false)
         onExit?.invoke()
     }
 
@@ -622,7 +610,6 @@ class OverlayBallView @JvmOverloads constructor(
 
     private fun showActionMenu() {
         menuVisible = true
-        exitArmed = false
         val dockLeft = isDockedLeft()
         expandWindowForExtras(forMenu = true, dockLeft = dockLeft)
 
@@ -673,7 +660,6 @@ class OverlayBallView @JvmOverloads constructor(
         if (!menuVisible && arcLayer.visibility != View.VISIBLE) return
         menuVisible = false
         menuCollapsing = true
-        exitArmed = false
         if (!animate) {
             menuButtons.forEach {
                 it.animate().cancel()
