@@ -747,8 +747,20 @@ class OverlayBallView @JvmOverloads constructor(
                 val dx = event.rawX - downRawX
                 val dy = event.rawY - downRawY
                 if (abs(dx) > touchSlop || abs(dy) > touchSlop) {
+                    if (!moved && menuVisible) {
+                        // Menu is open in an expanded window: rebase the drag origin to the
+                        // collapsed (hotspot-sized) window coords before collapsing clears
+                        // them — otherwise the ball jumps inward by the expansion amount and
+                        // snapToEdge then flies it back to the edge.
+                        startParamX = if (isDockedLeft()) {
+                            lp.x
+                        } else {
+                            lp.x + (lp.width - touchHotspotPx)
+                        }
+                        startParamY = lp.y + (lp.height - touchHotspotPx) / 2
+                        hideActionMenu(animate = false)
+                    }
                     moved = true
-                    if (menuVisible) hideActionMenu(animate = false)
                 }
                 if (moved) {
                     if (lp.width != touchHotspotPx) {
