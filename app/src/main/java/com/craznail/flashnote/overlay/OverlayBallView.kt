@@ -551,11 +551,11 @@ class OverlayBallView @JvmOverloads constructor(
         menuVisible = true
         exitArmed = false
         val dockLeft = isDockedLeft()
-        expandWindowForExtras(forMenu = true, dockLeft = dockLeft)
-
+        // Pin ball to dock edge BEFORE expanding, or it flashes to window center.
         val ballLp = ballContainer.layoutParams as LayoutParams
         ballLp.gravity = Gravity.CENTER_VERTICAL or if (dockLeft) Gravity.START else Gravity.END
         ballContainer.layoutParams = ballLp
+        expandWindowForExtras(forMenu = true, dockLeft = dockLeft)
 
         // Ball center inside expanded window
         val winW = windowParams?.width ?: width
@@ -616,7 +616,7 @@ class OverlayBallView @JvmOverloads constructor(
                 it.translationY = 0f
             }
             arcLayer.visibility = View.GONE
-            shrinkWindowIfIdle()
+            shrinkWindowIfIdle(force = true)
             return
         }
         val dockLeft = isDockedLeft()
@@ -627,7 +627,7 @@ class OverlayBallView @JvmOverloads constructor(
         var pending = menuButtons.count { it.visibility == View.VISIBLE }
         if (pending == 0) {
             arcLayer.visibility = View.GONE
-            shrinkWindowIfIdle()
+            shrinkWindowIfIdle(force = true)
             return
         }
         menuButtons.forEachIndexed { i, btn ->
@@ -652,7 +652,7 @@ class OverlayBallView @JvmOverloads constructor(
                     pending--
                     if (pending <= 0) {
                         arcLayer.visibility = View.GONE
-                        shrinkWindowIfIdle()
+                        shrinkWindowIfIdle(force = true)
                     }
                 }
                 .start()
@@ -709,20 +709,20 @@ class OverlayBallView @JvmOverloads constructor(
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val restoreX = collapsedWindowX
         val restoreY = collapsedWindowY
-        // Apply size + dock coords in one update — no intermediate center flash.
+        // Size + dock coords first — never change ball gravity while window is still expanded
+        // (that briefly centers the ball in the large window = flash to screen middle).
         lp.width = touchHotspotPx
         lp.height = touchHotspotPx
         if (restoreX != null && restoreY != null) {
             lp.x = restoreX
             lp.y = restoreY
         }
-        // Keep collapsed coords until successfully restored (idempotent re-entry).
         collapsedWindowX = null
         collapsedWindowY = null
+        runCatching { wm.updateViewLayout(this, lp) }
         val ballLp = ballContainer.layoutParams as LayoutParams
         ballLp.gravity = Gravity.CENTER
         ballContainer.layoutParams = ballLp
-        runCatching { wm.updateViewLayout(this, lp) }
         menuCollapsing = false
     }
 
