@@ -211,31 +211,6 @@ class OverlayService : Service() {
         @Volatile
         private var instance: OverlayService? = null
 
-        private val mainHandler = Handler(Looper.getMainLooper())
-
-        /**
-         * Hide overlay (ball + arc) before MediaProjection grab, wait ~60ms for 1–2 frames,
-         * then invoke [onHidden] (may be called on main thread).
-         */
-        fun hideForCapture(onHidden: () -> Unit) {
-            val svc = instance
-            val ball = svc?.ballView
-            if (ball == null) {
-                onHidden()
-                return
-            }
-            mainHandler.post {
-                ball.hideForCapture()
-                mainHandler.postDelayed({ onHidden() }, 60L)
-            }
-        }
-
-        fun showAfterCapture() {
-            mainHandler.post {
-                instance?.ballView?.showAfterCapture()
-            }
-        }
-
         fun start(context: Context) {
             val i = Intent(context, OverlayService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
