@@ -85,7 +85,6 @@
     <string name="cd_menu_settings">打开设置</string>
     <string name="cd_menu_exit">退出悬浮球</string>
     <string name="capture_failed_save">保存失败</string>
-    <string name="failure_tap_for_reason">操作失败，点击浮球查看原因</string>
     <string name="feedback_badge_persistent">提示器常驻</string>
     <string name="feedback_badge_persistent_desc">关闭后，反馈结束时右上角提示球一并隐藏</string>
     <string name="ball_size_title">浮球大小</string>

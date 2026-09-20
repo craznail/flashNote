@@ -264,12 +264,6 @@ class OverlayBallView @JvmOverloads constructor(
         lastFailReason = reason
         badgeModel.showFailure()
         transitionBadgeTo(FeedbackBadgeVisual.FAILURE, FeedbackMotion.badgeEnterDurationMs)
-        showSidePill(
-            context.getString(R.string.failure_tap_for_reason),
-            FAILURE_PILL,
-            durationMs = 1_200L,
-            sticky = false
-        )
     }
 
     fun showSystemTip(text: String, durationMs: Long = 1_200L) {
