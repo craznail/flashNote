@@ -85,7 +85,7 @@ class OverlayService : Service() {
             }
             ACTION_PROJECTION_LOST -> {
                 showedContinuousTip = false
-                ballView?.showSystemTip(getString(R.string.projection_lost_reauth))
+                ballView?.showFailure(getString(R.string.projection_lost_reauth))
             }
             ACTION_SHOW_TOAST -> {
                 val toast = intent.getStringExtra(EXTRA_TOAST) ?: return START_STICKY
