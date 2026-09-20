@@ -26,6 +26,9 @@ class FeedbackMotionTest {
     fun failureRecovery_overlapsPillAndBadgeExitBeforeResetting() {
         val timeline = FeedbackMotion.failureRecovery
 
+        assertEquals(2_000L, timeline.pillHoldMs)
+        assertEquals(1_920L, timeline.badgeExitDelayMs)
+        assertEquals(240L, timeline.badgeExitDurationMs)
         assertTrue(timeline.badgeExitDelayMs < timeline.pillHoldMs)
         assertEquals(2_180L, timeline.resetDelayMs)
         assertTrue(
@@ -42,9 +45,9 @@ class FeedbackMotionTest {
     fun successFeedback_holdsLongEnoughAndCrossfadesBothDirections() {
         val timeline = FeedbackMotion.successFeedback
 
-        assertTrue(timeline.enterDurationMs >= 200L)
-        assertTrue(timeline.holdDurationMs >= 1_200L)
-        assertTrue(timeline.exitDurationMs >= 300L)
+        assertEquals(260L, timeline.enterDurationMs)
+        assertEquals(1_500L, timeline.holdDurationMs)
+        assertEquals(420L, timeline.exitDurationMs)
         assertEquals(1_760L, timeline.exitDelayMs)
         assertEquals(2_180L, timeline.totalDurationMs)
     }

@@ -61,6 +61,43 @@ class DockedBallLayoutTest {
     }
 
     @Test
+    fun leftAndRightDock_hideTheSameAmountOfTheBall() {
+        val screenWidth = 1_080
+        val windowWidth = 56
+        val ballWidth = 44
+        val inset = 6
+        val rightDockStartX = screenWidth - 33
+        val placementLeft = DockedBallLayout.placement(dockLeft = true, insetPx = inset)
+        val placementRight = DockedBallLayout.placement(dockLeft = false, insetPx = inset)
+
+        val leftStartX = DockedBallLayout.dockedStartX(
+            dockLeft = true,
+            screenWidth = screenWidth,
+            windowWidth = windowWidth,
+            rightDockStartX = rightDockStartX
+        )
+        val rightStartX = DockedBallLayout.dockedStartX(
+            dockLeft = false,
+            screenWidth = screenWidth,
+            windowWidth = windowWidth,
+            rightDockStartX = rightDockStartX
+        )
+        val leftVisible = ballWidth + placementLeft.screenLeft(
+            windowX = leftStartX,
+            windowWidth = windowWidth,
+            ballWidth = ballWidth
+        )
+        val rightBallLeft = placementRight.screenLeft(
+            windowX = rightStartX,
+            windowWidth = windowWidth,
+            ballWidth = ballWidth
+        )
+        val rightVisible = screenWidth - rightBallLeft
+
+        assertEquals(rightVisible, leftVisible)
+    }
+
+    @Test
     fun leftDockedBall_keepsScreenPositionWhenOverlayWidthChanges() {
         val windowX = -11
         val placement = DockedBallLayout.placement(

@@ -133,9 +133,14 @@ class ArcMenuModelTest {
     }
 
     @Test
-    fun primaryBall_isClearlyLargerThanMenuButtons() {
-        assertTrue(ArcMenuDesign.ballSizeDp >= ArcMenuDesign.buttonSizeDp + 6f)
-        assertTrue(ArcMenuDesign.ballTouchSizeDp >= ArcMenuDesign.ballSizeDp + 8f)
+    fun primaryBall_isCompactButKeepsAComfortableTouchTarget() {
+        assertEquals(44f, ArcMenuDesign.ballSizeDp, 0f)
+        assertEquals(56f, ArcMenuDesign.ballTouchSizeDp, 0f)
+        assertEquals(40f, ArcMenuDesign.buttonSizeDp, 0f)
+        assertEquals(33f, ArcMenuDesign.dockedVisibleDp, 0f)
+        assertEquals(14f, ArcMenuDesign.feedbackBadgeSizeDp, 0f)
+        assertEquals(4f, ArcMenuDesign.ballSizeDp - ArcMenuDesign.buttonSizeDp, 0f)
+        assertEquals(12f, ArcMenuDesign.ballTouchSizeDp - ArcMenuDesign.ballSizeDp, 0f)
     }
 
     @Test

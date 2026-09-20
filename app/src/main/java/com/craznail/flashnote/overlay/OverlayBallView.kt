@@ -1,6 +1,5 @@
 package com.craznail.flashnote.overlay
 
-import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.PixelFormat
@@ -31,12 +30,12 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Floating overlay ball — UI locked (0.1.11):
- * - Main ball 48dp; docked visible ~32dp; note + lightning identity
- * - Normal and success layers share one fixed footprint; press scale 0.92
+ * Floating overlay ball:
+ * - Main ball is always the 44dp ice-blue note + lightning identity; touch target stays 56dp
+ * - Docked visible diameter is 33dp; press scale 0.92
  * - Tap toggles arc glass menu (capture only via menu items)
- * - Sub-buttons 40dp on a half-ring around the ball; dark smoked glass with light icons
- * - Success: held green plate with a soft crossfade; failure: neutral ball + compact coral badge
+ * - Sub-buttons stay 40dp on a half-ring around the ball
+ * - A single 14dp inward-corner badge carries thumbnail / success / failure feedback
  */
 class OverlayBallView @JvmOverloads constructor(
     context: Context,
@@ -50,20 +49,15 @@ class OverlayBallView @JvmOverloads constructor(
 
     private val density = resources.displayMetrics.density
     private val ballSizePx = (ArcMenuDesign.ballSizeDp * density).roundToInt()
-    private val visibleWhenDockedPx = (36 * density).roundToInt()
-    private val overhangPx = ballSizePx - visibleWhenDockedPx
+    private val visibleWhenDockedPx = (ArcMenuDesign.dockedVisibleDp * density).roundToInt()
     private val touchSlop = 8 * density
-    // UI lock: normal #E8F2FF α0.55 + stroke white α0.5; success #22C55E α0.72
-    private val fillNormal = 0x8CE8F2FF.toInt()
-    private val strokeNormal = 0x80FFFFFF.toInt()
-    private val fillSuccess = 0xB822C55E.toInt()
-    private val strokeSuccess = 0xE622C55E.toInt()
     private val ballContainer: FrameLayout
-    private val ballBg: View
     private val iconView: ImageView
-    private val successIconView: ImageView
-    private val redDot: TextView
+    private val feedbackBadge: FrameLayout
     private val thumbBadge: ImageView
+    private val successBadge: View
+    private val failureBadge: TextView
+    private val badgeModel = FeedbackBadgeModel()
     private var windowParams: WindowManager.LayoutParams? = null
     private var windowManager: WindowManager? = null
     private var overlayType: Int? = null
@@ -82,15 +76,10 @@ class OverlayBallView @JvmOverloads constructor(
     private var hideToastRunnable: Runnable? = null
     /** Sticky side pill (remote summarizing) — stays until clearSidePill / success / fail. */
     private var pillSticky = false
-    private var ballMood = BallMood.NORMAL
     private var lastFailReason: String? = null
-    private var colorAnimator: ValueAnimator? = null
     private var normalizeRunnable: Runnable? = null
     private var badgeExitRunnable: Runnable? = null
-    private var currentFill: Int = 0x8CE8F2FF.toInt()
-    private var currentStroke: Int = 0x80FFFFFF.toInt()
-
-    private enum class BallMood { NORMAL, SUCCESS, FAILURE }
+    private var feedbackTipRunnable: Runnable? = null
 
     private val touchHotspotPx = (ArcMenuDesign.ballTouchSizeDp * density).roundToInt()
 
@@ -102,17 +91,9 @@ class OverlayBallView @JvmOverloads constructor(
             layoutParams = LayoutParams(ballSizePx, ballSizePx).apply {
                 gravity = Gravity.CENTER
             }
-            elevation = 3 * density // soft low-contrast shadow
-        }
-
-        currentFill = fillNormal
-        currentStroke = strokeNormal
-        ballBg = View(context).apply {
-            layoutParams = LayoutParams(ballSizePx, ballSizePx)
-            background = glassOval(currentFill, currentStroke)
-            // Normal uses full circular logo asset; plate only for green/red states
-            visibility = View.GONE
-            alpha = 0f
+            elevation = 2 * density // keep the ball close to the screen surface
+            clipChildren = false
+            clipToPadding = false
         }
 
         iconView = ImageView(context).apply {
@@ -124,23 +105,35 @@ class OverlayBallView @JvmOverloads constructor(
             contentDescription = context.getString(R.string.app_name)
         }
 
-        successIconView = ImageView(context).apply {
-            layoutParams = LayoutParams(ballSizePx, ballSizePx)
-            setImageResource(R.drawable.ic_ball_lightning)
-            setColorFilter(0xFFFFFFFF.toInt())
+        val badgeSizePx = (ArcMenuDesign.feedbackBadgeSizeDp * density).roundToInt()
+        feedbackBadge = FrameLayout(context).apply {
+            layoutParams = LayoutParams(badgeSizePx, badgeSizePx)
+            clipChildren = false
+            clipToPadding = false
+            elevation = 3 * density
             visibility = View.GONE
-            alpha = 0f
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            val pad = (11 * density).roundToInt()
-            setPadding(pad, pad, pad, pad)
         }
 
-        redDot = TextView(context).apply {
-            val d = (13 * density).roundToInt()
-            layoutParams = LayoutParams(d, d).apply {
-                gravity = Gravity.TOP or Gravity.START
-                setMargins((1 * density).roundToInt(), (1 * density).roundToInt(), 0, 0)
+        thumbBadge = ImageView(context).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            visibility = View.VISIBLE
+            alpha = 0f
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+
+        successBadge = View(context).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(SUCCESS_GREEN)
+                setStroke((1 * density).roundToInt().coerceAtLeast(1), 0xE6FFFFFF.toInt())
             }
+            visibility = View.VISIBLE
+            alpha = 0f
+        }
+
+        failureBadge = TextView(context).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
             text = "!"
             textSize = 8f
             typeface = Typeface.DEFAULT_BOLD
@@ -150,44 +143,23 @@ class OverlayBallView @JvmOverloads constructor(
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(FAILURE_CORAL)
-                setStroke((1 * density).roundToInt().coerceAtLeast(1), 0xB3FFFFFF.toInt())
+                setStroke((1 * density).roundToInt().coerceAtLeast(1), 0xE6FFFFFF.toInt())
             }
-            elevation = 3 * density
-            visibility = View.GONE
+            visibility = View.VISIBLE
             alpha = 0f
-            scaleX = 0.72f
-            scaleY = 0.72f
         }
 
-        thumbBadge = ImageView(context).apply {
-            val d = (14 * density).roundToInt()
-            layoutParams = LayoutParams(d, d).apply {
-                gravity = Gravity.TOP or Gravity.END
-                setMargins(0, (-1 * density).roundToInt(), (-1 * density).roundToInt(), 0)
-            }
-            visibility = View.GONE
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            elevation = 2 * density
-        }
+        feedbackBadge.addView(thumbBadge)
+        feedbackBadge.addView(successBadge)
+        feedbackBadge.addView(failureBadge)
 
-        ballContainer.addView(ballBg)
         ballContainer.addView(iconView)
-        ballContainer.addView(successIconView)
-        ballContainer.addView(redDot)
-        ballContainer.addView(thumbBadge)
+        ballContainer.addView(feedbackBadge)
 
         addView(ballContainer)
 
         isClickable = true
         isFocusable = true
-    }
-
-    private fun glassOval(fill: Int, stroke: Int): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(fill)
-            setStroke((1 * density).roundToInt().coerceAtLeast(1), stroke)
-        }
     }
 
     fun attach(wm: WindowManager): WindowManager.LayoutParams {
@@ -230,7 +202,10 @@ class OverlayBallView @JvmOverloads constructor(
     override fun onDetachedFromWindow() {
         hideActionMenu(animate = false)
         hideToastRunnable?.let { handler.removeCallbacks(it) }
+        normalizeRunnable?.let { handler.removeCallbacks(it) }
         badgeExitRunnable?.let { handler.removeCallbacks(it) }
+        feedbackTipRunnable?.let { handler.removeCallbacks(it) }
+        cancelFeedbackAnimations()
         sidePillWindow?.dismiss(animated = false)
         sidePillWindow = null
         windowManager = null
@@ -238,45 +213,36 @@ class OverlayBallView @JvmOverloads constructor(
     }
 
     /**
-     * Success: full-size green state held long enough to read, then crossfaded back.
-     * Clears any loading pill. Optional [tipText] shows as a light side pill after the check
-     * (fallback / not-configured tips only — never the default 「已保存」 copy).
+     * Success is carried entirely by the 14dp badge; the primary ball never changes colour.
+     * A new thumbnail is installed underneath the success layer before the crossfade starts.
      */
     fun showSuccessFeedback(tipText: String? = null, thumbnailPath: String? = null) {
         clearSidePill(immediate = true)
-        cancelBallStateAnimations()
-        normalizeRunnable?.let { handler.removeCallbacks(it) }
+        cancelFeedbackState()
         lastFailReason = null
-        ballMood = BallMood.SUCCESS
-        hideFailureBadge(immediate = true)
-        iconView.visibility = View.VISIBLE
-        applyBallArt()
+
+        val hasNewThumbnail = !thumbnailPath.isNullOrBlank() &&
+            File(thumbnailPath).exists() &&
+            updateThumbnailDrawable(thumbnailPath)
+        badgeModel.showSuccess(hasNewThumbnail = hasNewThumbnail)
+
         val timeline = FeedbackMotion.successFeedback
-        animateBallColors(fillSuccess, strokeSuccess, timeline.enterDurationMs)
-        iconView.animate()
-            .alpha(0f)
-            .setDuration(timeline.enterDurationMs)
-            .setInterpolator(ENTER_EASING)
-            .start()
-        ballBg.animate()
-            .alpha(1f)
-            .setDuration(timeline.enterDurationMs)
-            .setInterpolator(ENTER_EASING)
-            .start()
-        successIconView.animate()
-            .alpha(1f)
-            .setDuration(timeline.enterDurationMs)
-            .setInterpolator(ENTER_EASING)
-            .start()
-        if (!thumbnailPath.isNullOrBlank() && File(thumbnailPath).exists()) {
-            setThumbnailBadge(thumbnailPath)
-        }
+        transitionBadgeTo(FeedbackBadgeVisual.SUCCESS, timeline.enterDurationMs)
         scheduleSuccessExit()
+
         val tip = tipText?.takeIf { it.isNotBlank() }
         if (tip != null) {
-            handler.postDelayed({
-                showSidePill(tip, 0xCC374151.toInt(), 1_600L, sticky = false)
-            }, timeline.exitDelayMs)
+            val tipRunnable = Runnable {
+                feedbackTipRunnable = null
+                if (badgeModel.visual == FeedbackBadgeVisual.SUCCESS ||
+                    badgeModel.visual == FeedbackBadgeVisual.THUMBNAIL ||
+                    badgeModel.visual == FeedbackBadgeVisual.HIDDEN
+                ) {
+                    showSidePill(tip, 0xCC374151.toInt(), 1_600L, sticky = false)
+                }
+            }
+            feedbackTipRunnable = tipRunnable
+            handler.postDelayed(tipRunnable, timeline.exitDelayMs)
         }
     }
 
@@ -286,15 +252,16 @@ class OverlayBallView @JvmOverloads constructor(
 
     fun showFailure(reason: String) {
         clearSidePill(immediate = true)
-        normalizeRunnable?.let { handler.removeCallbacks(it) }
-        badgeExitRunnable?.let { handler.removeCallbacks(it) }
-        cancelBallStateAnimations()
+        cancelFeedbackState()
         lastFailReason = reason
-        ballMood = BallMood.FAILURE
-        thumbBadge.visibility = View.GONE
-        iconView.visibility = View.VISIBLE
-        applyBallArt()
-        showFailureBadge()
+        badgeModel.showFailure()
+        transitionBadgeTo(FeedbackBadgeVisual.FAILURE, FeedbackMotion.badgeEnterDurationMs)
+        showSidePill(
+            context.getString(R.string.failure_tap_for_reason),
+            FAILURE_PILL,
+            durationMs = 1_200L,
+            sticky = false
+        )
     }
 
     fun showSystemTip(text: String, durationMs: Long = 1_200L) {
@@ -302,9 +269,17 @@ class OverlayBallView @JvmOverloads constructor(
     }
 
     fun setThumbnailBadge(path: String) {
-        try {
-            val bmp = android.graphics.BitmapFactory.decodeFile(path) ?: return
-            val size = (14 * density).roundToInt()
+        if (!updateThumbnailDrawable(path)) return
+        badgeModel.rememberThumbnail()
+        if (badgeModel.visual == FeedbackBadgeVisual.THUMBNAIL) {
+            transitionBadgeTo(FeedbackBadgeVisual.THUMBNAIL, durationMs = 0L)
+        }
+    }
+
+    private fun updateThumbnailDrawable(path: String): Boolean {
+        return try {
+            val bmp = android.graphics.BitmapFactory.decodeFile(path) ?: return false
+            val size = (ArcMenuDesign.feedbackBadgeSizeDp * density).roundToInt()
             val scaled = android.graphics.Bitmap.createScaledBitmap(bmp, size, size, true)
             if (scaled != bmp) bmp.recycle()
             val drawable = RoundedBitmapDrawableFactory.create(resources, scaled).apply {
@@ -313,12 +288,11 @@ class OverlayBallView @JvmOverloads constructor(
             thumbBadge.setImageDrawable(drawable)
             thumbBadge.background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setStroke((1.5f * density).roundToInt().coerceAtLeast(1), 0xFFFFFFFF.toInt())
+                setStroke((1.25f * density).roundToInt().coerceAtLeast(1), 0xFFFFFFFF.toInt())
             }
-            thumbBadge.visibility = View.VISIBLE
-            thumbBadge.alpha = 1f
+            true
         } catch (_: Exception) {
-            // ignore
+            false
         }
     }
 
@@ -478,7 +452,7 @@ class OverlayBallView @JvmOverloads constructor(
                 when {
                     !moved && event.actionMasked == MotionEvent.ACTION_UP -> {
                         when {
-                            ballMood == BallMood.FAILURE && !menuState.isOpen -> showFailReason()
+                            badgeModel.visual == FeedbackBadgeVisual.FAILURE && !menuState.isOpen -> showFailReason()
                             menuState.isOpen -> hideActionMenu()
                             else -> showActionMenu()
                         }
@@ -516,11 +490,13 @@ class OverlayBallView @JvmOverloads constructor(
             screenWidth = dm.widthPixels,
             windowWidth = lp.width
         )
-        val targetStartX = if (nextDockLeft) {
-            -overhangPx
-        } else {
-            dm.widthPixels - visibleWhenDockedPx
-        }
+        val rightDockStartX = dm.widthPixels - visibleWhenDockedPx
+        val targetStartX = DockedBallLayout.dockedStartX(
+            dockLeft = nextDockLeft,
+            screenWidth = dm.widthPixels,
+            windowWidth = lp.width,
+            rightDockStartX = rightDockStartX
+        )
         val targetX = DockedBallLayout.windowPlacementFromStartX(
             dockLeft = nextDockLeft,
             startX = targetStartX,
@@ -559,11 +535,12 @@ class OverlayBallView @JvmOverloads constructor(
         lp.marginStart = if (placement.dockLeft) placement.insetPx else 0
         lp.marginEnd = if (placement.dockLeft) 0 else placement.insetPx
         ballContainer.layoutParams = lp
-        positionFailureBadge(dockLeft)
+        positionFeedbackBadge(dockLeft)
     }
 
-    /** Tapping a failed ball reveals the reason, then gently returns to normal. */
+    /** Tapping a failed ball reveals the reason, then restores the previous thumbnail state. */
     private fun showFailReason() {
+        if (!badgeModel.consumeFailureReason()) return
         val reason = lastFailReason ?: context.getString(R.string.unauthorized_capture)
         val text = SpannableString("●  $reason").apply {
             setSpan(ForegroundColorSpan(FAILURE_CORAL), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -571,19 +548,27 @@ class OverlayBallView @JvmOverloads constructor(
         }
         val timeline = FeedbackMotion.failureRecovery
         showSidePill(text, FAILURE_PILL, timeline.pillHoldMs, sticky = false)
+
         normalizeRunnable?.let { handler.removeCallbacks(it) }
         badgeExitRunnable?.let { handler.removeCallbacks(it) }
+
         val badgeExit = Runnable {
-            if (ballMood == BallMood.FAILURE) hideFailureBadge(immediate = false)
+            if (badgeModel.visual != FeedbackBadgeVisual.FAILURE) return@Runnable
+            feedbackBadge.animate().cancel()
+            feedbackBadge.animate()
+                .alpha(0f)
+                .setDuration(timeline.badgeExitDurationMs)
+                .setInterpolator(EXIT_EASING)
+                .start()
         }
         badgeExitRunnable = badgeExit
         handler.postDelayed(badgeExit, timeline.badgeExitDelayMs)
+
         val reset = Runnable {
-            if (ballMood != BallMood.FAILURE) return@Runnable
+            if (badgeModel.visual != FeedbackBadgeVisual.FAILURE) return@Runnable
             lastFailReason = null
-            ballMood = BallMood.NORMAL
-            applyBallArt()
-            hideFailureBadge(immediate = true)
+            badgeModel.restoreDefault()
+            applyBadgeVisualImmediately(badgeModel.visual)
         }
         normalizeRunnable = reset
         handler.postDelayed(reset, timeline.resetDelayMs)
@@ -593,141 +578,107 @@ class OverlayBallView @JvmOverloads constructor(
         normalizeRunnable?.let { handler.removeCallbacks(it) }
         val timeline = FeedbackMotion.successFeedback
         val r = Runnable {
-            if (ballMood != BallMood.SUCCESS) return@Runnable
-            iconView.animate()
-                .alpha(1f)
-                .setDuration(timeline.exitDurationMs)
-                .setInterpolator(EXIT_EASING)
-                .start()
-            successIconView.animate()
-                .alpha(0f)
-                .setDuration(timeline.exitDurationMs)
-                .setInterpolator(EXIT_EASING)
-                .start()
-            animateBallColors(fillNormal, strokeNormal, timeline.exitDurationMs)
-            ballBg.animate()
-                .alpha(0f)
-                .setDuration(timeline.exitDurationMs)
-                .setInterpolator(EXIT_EASING)
-                .withEndAction {
-                    if (ballMood != BallMood.SUCCESS) return@withEndAction
-                    ballMood = BallMood.NORMAL
-                    applyBallArt()
-                }
-                .start()
+            if (badgeModel.visual != FeedbackBadgeVisual.SUCCESS) return@Runnable
+            badgeModel.restoreDefault()
+            transitionBadgeTo(badgeModel.visual, timeline.exitDurationMs)
         }
         normalizeRunnable = r
         handler.postDelayed(r, timeline.exitDelayMs)
     }
 
-
-    /** The glass ball remains visually continuous; failure is carried by its badge. */
-    private fun applyBallArt() {
-        when (ballMood) {
-            BallMood.NORMAL, BallMood.FAILURE -> {
-                ballBg.visibility = View.GONE
-                ballBg.alpha = 0f
-                successIconView.visibility = View.GONE
-                successIconView.alpha = 0f
-                val lp = iconView.layoutParams as LayoutParams
-                lp.width = ballSizePx
-                lp.height = ballSizePx
-                iconView.layoutParams = lp
-                iconView.setImageResource(R.drawable.ic_ball_normal)
-                iconView.clearColorFilter()
-                iconView.scaleType = ImageView.ScaleType.FIT_CENTER
-                iconView.alpha = 1f
-            }
-            BallMood.SUCCESS -> {
-                ballBg.visibility = View.VISIBLE
-                ballBg.alpha = 0f
-                successIconView.visibility = View.VISIBLE
-                successIconView.alpha = 0f
-                val lp = iconView.layoutParams as LayoutParams
-                lp.width = ballSizePx
-                lp.height = ballSizePx
-                iconView.layoutParams = lp
-                iconView.setImageResource(R.drawable.ic_ball_normal)
-                iconView.clearColorFilter()
-                iconView.scaleType = ImageView.ScaleType.FIT_CENTER
-                iconView.alpha = 1f
-            }
-        }
+    private fun cancelFeedbackState() {
+        normalizeRunnable?.let { handler.removeCallbacks(it) }
+        badgeExitRunnable?.let { handler.removeCallbacks(it) }
+        feedbackTipRunnable?.let { handler.removeCallbacks(it) }
+        normalizeRunnable = null
+        badgeExitRunnable = null
+        feedbackTipRunnable = null
+        cancelFeedbackAnimations()
     }
 
-    private fun cancelBallStateAnimations() {
-        iconView.animate().cancel()
-        ballBg.animate().cancel()
-        successIconView.animate().cancel()
-        colorAnimator?.cancel()
+    private fun cancelFeedbackAnimations() {
+        feedbackBadge.animate().cancel()
+        thumbBadge.animate().cancel()
+        successBadge.animate().cancel()
+        failureBadge.animate().cancel()
     }
 
-    private fun showFailureBadge() {
-        positionFailureBadge(dockedLeft)
-        redDot.animate().cancel()
-        redDot.visibility = View.VISIBLE
-        redDot.alpha = 0f
-        redDot.scaleX = 0.72f
-        redDot.scaleY = 0.72f
-        redDot.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(FeedbackMotion.badgeEnterDurationMs)
-            .setInterpolator(ENTER_EASING)
-            .start()
-    }
-
-    private fun hideFailureBadge(immediate: Boolean) {
-        redDot.animate().cancel()
-        if (immediate || redDot.visibility != View.VISIBLE) {
-            redDot.visibility = View.GONE
-            redDot.alpha = 0f
-            redDot.scaleX = 0.72f
-            redDot.scaleY = 0.72f
+    private fun transitionBadgeTo(target: FeedbackBadgeVisual, durationMs: Long) {
+        positionFeedbackBadge(dockedLeft)
+        cancelFeedbackAnimations()
+        if (durationMs <= 0L) {
+            applyBadgeVisualImmediately(target)
             return
         }
-        redDot.animate()
-            .alpha(0f)
-            .scaleX(0.82f)
-            .scaleY(0.82f)
-            .setDuration(FeedbackMotion.failureRecovery.badgeExitDurationMs)
-            .setInterpolator(EXIT_EASING)
-            .withEndAction { redDot.visibility = View.GONE }
+
+        if (target == FeedbackBadgeVisual.HIDDEN) {
+            if (feedbackBadge.visibility != View.VISIBLE) {
+                applyBadgeVisualImmediately(target)
+                return
+            }
+            feedbackBadge.animate()
+                .alpha(0f)
+                .setDuration(durationMs)
+                .setInterpolator(EXIT_EASING)
+                .withEndAction {
+                    if (badgeModel.visual == FeedbackBadgeVisual.HIDDEN) {
+                        applyBadgeVisualImmediately(FeedbackBadgeVisual.HIDDEN)
+                    }
+                }
+                .start()
+            return
+        }
+
+        feedbackBadge.visibility = View.VISIBLE
+        feedbackBadge.animate()
+            .alpha(1f)
+            .setDuration(durationMs)
+            .setInterpolator(ENTER_EASING)
+            .start()
+
+        animateBadgeLayer(thumbBadge, target == FeedbackBadgeVisual.THUMBNAIL, durationMs)
+        animateBadgeLayer(successBadge, target == FeedbackBadgeVisual.SUCCESS, durationMs)
+        animateBadgeLayer(failureBadge, target == FeedbackBadgeVisual.FAILURE, durationMs)
+    }
+
+    private fun animateBadgeLayer(view: View, selected: Boolean, durationMs: Long) {
+        view.visibility = View.VISIBLE
+        view.animate().cancel()
+        view.animate()
+            .alpha(if (selected) 1f else 0f)
+            .setDuration(durationMs)
+            .setInterpolator(if (selected) ENTER_EASING else EXIT_EASING)
             .start()
     }
 
-    private fun positionFailureBadge(dockLeft: Boolean) {
-        val lp = redDot.layoutParams as LayoutParams
-        lp.gravity = Gravity.TOP or if (dockLeft) Gravity.END else Gravity.START
-        lp.marginStart = if (dockLeft) 0 else (1 * density).roundToInt()
-        lp.marginEnd = if (dockLeft) (1 * density).roundToInt() else 0
-        lp.topMargin = (1 * density).roundToInt()
-        redDot.layoutParams = lp
+    private fun applyBadgeVisualImmediately(target: FeedbackBadgeVisual) {
+        feedbackBadge.animate().cancel()
+        val hidden = target == FeedbackBadgeVisual.HIDDEN
+        feedbackBadge.visibility = if (hidden) View.GONE else View.VISIBLE
+        feedbackBadge.alpha = if (hidden) 0f else 1f
+        thumbBadge.alpha = if (target == FeedbackBadgeVisual.THUMBNAIL) 1f else 0f
+        successBadge.alpha = if (target == FeedbackBadgeVisual.SUCCESS) 1f else 0f
+        failureBadge.alpha = if (target == FeedbackBadgeVisual.FAILURE) 1f else 0f
     }
 
-    private fun animateBallColors(toFill: Int, toStroke: Int, durationMs: Long) {
-        colorAnimator?.cancel()
-        val fromFill = currentFill
-        val fromStroke = currentStroke
-        val anim = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = durationMs
-            interpolator = DecelerateInterpolator()
-            addUpdateListener { a ->
-                val f = a.animatedValue as Float
-                val eval = ArgbEvaluator()
-                currentFill = eval.evaluate(f, fromFill, toFill) as Int
-                currentStroke = eval.evaluate(f, fromStroke, toStroke) as Int
-                ballBg.background = glassOval(currentFill, currentStroke)
-            }
+    private fun positionFeedbackBadge(dockLeft: Boolean) {
+        val lp = feedbackBadge.layoutParams as LayoutParams
+        val inwardCorner = FeedbackBadgePlacement.corner(dockLeft)
+        lp.gravity = Gravity.TOP or when (inwardCorner) {
+            FeedbackBadgeCorner.TOP_START -> Gravity.START
+            FeedbackBadgeCorner.TOP_END -> Gravity.END
         }
-        colorAnimator = anim
-        anim.start()
+        val overlap = (-1 * density).roundToInt()
+        lp.marginStart = if (inwardCorner == FeedbackBadgeCorner.TOP_START) overlap else 0
+        lp.marginEnd = if (inwardCorner == FeedbackBadgeCorner.TOP_END) overlap else 0
+        lp.topMargin = overlap
+        feedbackBadge.layoutParams = lp
     }
 
 
     companion object {
         const val PRIMARY_BLUE = 0xFF3B82F6.toInt()
+        private const val SUCCESS_GREEN = 0xFF32E875.toInt()
         private const val FAILURE_CORAL = 0xFFF05A5A.toInt()
         private const val FAILURE_PILL = 0xEA262A33.toInt()
         private val ENTER_EASING = PathInterpolator(0.22f, 1f, 0.36f, 1f)

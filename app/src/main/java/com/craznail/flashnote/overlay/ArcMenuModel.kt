@@ -58,9 +58,11 @@ internal data class ArcMenuWindowLayout(
 )
 
 internal object ArcMenuDesign {
-    const val ballSizeDp = 48f
+    const val ballSizeDp = 44f
     const val ballTouchSizeDp = 56f
     const val buttonSizeDp = 40f
+    const val dockedVisibleDp = 33f
+    const val feedbackBadgeSizeDp = 14f
     // Ball edge ↔ button edge gap shrunk another 1/3 (19dp → 13dp): 24 + 20 + 13 = 57.
     const val radiusDp = 57f
     const val startScale = 0.42f

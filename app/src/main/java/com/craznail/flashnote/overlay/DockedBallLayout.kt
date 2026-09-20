@@ -31,6 +31,17 @@ internal object DockedBallLayout {
     fun placement(dockLeft: Boolean, insetPx: Int): DockedBallPlacement =
         DockedBallPlacement(dockLeft, insetPx)
 
+    fun dockedStartX(
+        dockLeft: Boolean,
+        screenWidth: Int,
+        windowWidth: Int,
+        rightDockStartX: Int
+    ): Int = if (dockLeft) {
+        -(windowWidth - (screenWidth - rightDockStartX))
+    } else {
+        rightDockStartX
+    }
+
     fun windowPlacement(dockLeft: Boolean, edgeOffsetPx: Int): DockedWindowPlacement =
         DockedWindowPlacement(dockLeft, edgeOffsetPx)
 
