@@ -21,6 +21,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
+import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -312,7 +313,39 @@ class CaptureService : Service() {
                 }
             }
         }
-        return bitmap
+        return bitmap?.let(::cropSystemStatusBar)
+    }
+
+    private fun statusBarInsetPx(): Int {
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val inset = runCatching {
+                wm.maximumWindowMetrics.windowInsets
+                    .getInsetsIgnoringVisibility(WindowInsets.Type.statusBars())
+                    .top
+            }.getOrDefault(0)
+            if (inset > 0) return inset
+        }
+
+        @Suppress("DiscouragedApi")
+        val resourceId = resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
+    }
+
+    private fun cropSystemStatusBar(bitmap: Bitmap): Bitmap {
+        val top = statusBarInsetPx().coerceIn(0, bitmap.height - 1)
+        if (top <= 0) return bitmap
+
+        val cropped = Bitmap.createBitmap(
+            bitmap,
+            0,
+            top,
+            bitmap.width,
+            bitmap.height - top
+        )
+        if (cropped != bitmap) bitmap.recycle()
+        Log.d(TAG, "Cropped system status bar: top=" + top + "px, output=" + cropped.width + "x" + cropped.height)
+        return cropped
     }
 
     private fun imageToBitmap(image: Image, width: Int, height: Int): Bitmap {
