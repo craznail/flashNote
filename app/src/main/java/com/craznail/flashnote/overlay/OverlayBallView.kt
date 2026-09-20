@@ -624,21 +624,19 @@ class OverlayBallView @JvmOverloads constructor(
 
         val badgeExit = Runnable {
             if (badgeModel.visual != FeedbackBadgeVisual.FAILURE) return@Runnable
-            feedbackBadge.animate().cancel()
-            feedbackBadge.animate()
-                .alpha(0f)
-                .setDuration(timeline.badgeExitDurationMs)
-                .setInterpolator(EXIT_EASING)
-                .start()
+            badgeModel.restoreDefault(persistThumbnail = feedbackBadgePersistent)
+            transitionBadgeTo(
+                target = badgeModel.visual,
+                durationMs = timeline.badgeExitDurationMs
+            )
         }
         badgeExitRunnable = badgeExit
         handler.postDelayed(badgeExit, timeline.badgeExitDelayMs)
 
         val reset = Runnable {
-            if (badgeModel.visual != FeedbackBadgeVisual.FAILURE) return@Runnable
+            // Visual recovery already finished through a crossfade above. Only clear
+            // the consumed failure payload here so the final frame is never re-applied.
             lastFailReason = null
-            badgeModel.restoreDefault(persistThumbnail = feedbackBadgePersistent)
-            applyBadgeVisualImmediately(badgeModel.visual)
         }
         normalizeRunnable = reset
         handler.postDelayed(reset, timeline.resetDelayMs)
