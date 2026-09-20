@@ -6,12 +6,11 @@ import org.junit.Test
 class OverlayCapturePolicyTest {
 
     @Test
-    fun secureFlags_preserveWindowBehaviorAndAddCaptureExclusion() {
+    fun captureSafeFlags_doNotAddSecureSurfaceMasking() {
         val baseFlags = 0b0101
-        val secureFlag = 0b1000
 
-        val result = OverlayCapturePolicy.secureFlags(baseFlags, secureFlag)
+        val result = OverlayCapturePolicy.captureSafeFlags(baseFlags)
 
-        assertEquals(0b1101, result)
+        assertEquals(baseFlags, result)
     }
 }

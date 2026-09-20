@@ -36,6 +36,7 @@ import com.craznail.flashnote.process.RemoteAiClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -136,12 +137,20 @@ class CaptureService : Service() {
 
     private fun readScreenMetrics() {
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        wm.defaultDisplay.getRealMetrics(metrics)
-        screenWidth = metrics.widthPixels
-        screenHeight = metrics.heightPixels
-        screenDensity = metrics.densityDpi
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.maximumWindowMetrics.bounds
+            screenWidth = bounds.width()
+            screenHeight = bounds.height()
+            screenDensity = resources.configuration.densityDpi
+        } else {
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(metrics)
+            screenWidth = metrics.widthPixels
+            screenHeight = metrics.heightPixels
+            screenDensity = resources.configuration.densityDpi
+        }
+        Log.i(TAG, "Capture metrics " + screenWidth + "x" + screenHeight + " @ " + screenDensity + "dpi")
     }
 
     private fun setupProjection(resultCode: Int, data: Intent) {
@@ -206,9 +215,14 @@ class CaptureService : Service() {
 
         scope.launch {
             try {
-                // Overlay windows carry FLAG_SECURE, so MediaProjection excludes them
-                // without hiding the UI and producing a visible blink.
+                // FLAG_SECURE leaves a black replacement surface on HyperOS/API 36.
+                // Hide our transparent overlay for a few compositor frames instead so
+                // MediaProjection sees the real app pixels underneath the floating ball.
+                OverlayService.setCaptureHidden(true)
+                delay(64L)
                 val bitmap = withContext(Dispatchers.IO) { grabBitmapFromReader() }
+                OverlayService.setCaptureHidden(false)
+
                 if (bitmap != null) {
                     val path = withContext(Dispatchers.IO) { savePng(bitmap) }
                     val app = application as FlashNoteApp
@@ -274,6 +288,7 @@ class CaptureService : Service() {
                 // Clears sticky loading pill if remote was in-flight when capture errored.
                 OverlayService.notifyUnauthorized(this@CaptureService, getString(R.string.capture_failed_save))
             } finally {
+                OverlayService.setCaptureHidden(false)
                 capturing.set(false)
                 // Keep FGS + VD + MediaProjection alive.
             }

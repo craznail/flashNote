@@ -180,11 +180,10 @@ class OverlayBallView @JvmOverloads constructor(
             touchHotspotPx,
             touchHotspotPx,
             type,
-            OverlayCapturePolicy.secureFlags(
+            OverlayCapturePolicy.captureSafeFlags(
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                WindowManager.LayoutParams.FLAG_SECURE
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
             ),
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -286,6 +285,14 @@ class OverlayBallView @JvmOverloads constructor(
             badgeModel.restoreDefault(persistThumbnail = enabled)
             transitionBadgeTo(badgeModel.visual, durationMs = 160L)
         }
+    }
+
+    fun setCaptureHidden(hidden: Boolean) {
+        if (hidden) {
+            hideActionMenu(animate = false)
+            clearSidePill(immediate = true)
+        }
+        visibility = if (hidden) View.INVISIBLE else View.VISIBLE
     }
 
     fun setBallSize(size: OverlayBallSize) {

@@ -1,6 +1,12 @@
 package com.craznail.flashnote.overlay
 
-/** Keeps overlay windows visible to the user while excluding them from capture output. */
+/**
+ * Overlay windows stay ordinary transparent overlays.
+ *
+ * FLAG_SECURE caused MediaProjection to black out the overlay surface instead of
+ * revealing the app underneath on HyperOS/API 36. FlashNote now excludes its UI by
+ * temporarily making the overlay content invisible for the capture frame.
+ */
 internal object OverlayCapturePolicy {
-    fun secureFlags(baseFlags: Int, secureFlag: Int): Int = baseFlags or secureFlag
+    fun captureSafeFlags(baseFlags: Int): Int = baseFlags
 }

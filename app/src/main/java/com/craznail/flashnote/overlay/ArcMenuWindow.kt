@@ -61,12 +61,11 @@ internal class ArcMenuWindow(
         windowWidthPx,
         windowHeightPx,
         overlayType,
-        OverlayCapturePolicy.secureFlags(
+        OverlayCapturePolicy.captureSafeFlags(
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            WindowManager.LayoutParams.FLAG_SECURE
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         ),
         PixelFormat.TRANSLUCENT
     ).apply {

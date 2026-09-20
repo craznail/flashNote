@@ -244,6 +244,10 @@ class OverlayService : Service() {
             instance?.ballView?.setBallSize(size)
         }
 
+        fun setCaptureHidden(hidden: Boolean) {
+            instance?.ballView?.setCaptureHidden(hidden)
+        }
+
         fun notifySaved(
             context: Context,
             imagePath: String? = null,
