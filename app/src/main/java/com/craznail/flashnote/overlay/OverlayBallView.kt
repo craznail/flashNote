@@ -83,6 +83,7 @@ class OverlayBallView @JvmOverloads constructor(
     private var normalizeRunnable: Runnable? = null
     private var badgeExitRunnable: Runnable? = null
     private var feedbackTipRunnable: Runnable? = null
+    private var badgeDockAnimator: ValueAnimator? = null
 
     private val touchHotspotPx = (ArcMenuDesign.ballTouchSizeDp * density).roundToInt()
 
@@ -209,6 +210,7 @@ class OverlayBallView @JvmOverloads constructor(
         badgeExitRunnable?.let { handler.removeCallbacks(it) }
         feedbackTipRunnable?.let { handler.removeCallbacks(it) }
         cancelFeedbackAnimations()
+        badgeDockAnimator?.cancel()
         sidePillWindow?.dismiss(animated = false)
         sidePillWindow = null
         windowManager = null
@@ -516,10 +518,14 @@ class OverlayBallView @JvmOverloads constructor(
             screenWidth = dm.widthPixels,
             windowWidth = lp.width
         ).edgeOffsetPx
+        val previousDockLeft = dockedLeft
         dockedLeft = nextDockLeft
         lp.gravity = Gravity.TOP or if (dockedLeft) Gravity.START else Gravity.END
         lp.x = startPlacement.edgeOffsetPx
         pinBallToDockEdge(dockedLeft)
+        if (previousDockLeft != dockedLeft) {
+            animateFeedbackBadgeDockChange(toDockLeft = dockedLeft)
+        }
         val maxY = dm.heightPixels - ballSizePx - marginY
         val targetY = lp.y.coerceIn(marginY, maxY)
         val startXAnim = lp.x
@@ -688,6 +694,33 @@ class OverlayBallView @JvmOverloads constructor(
         feedbackBadge.layoutParams = lp
     }
 
+
+    private fun animateFeedbackBadgeDockChange(toDockLeft: Boolean) {
+        badgeDockAnimator?.cancel()
+        feedbackBadge.translationX = 0f
+        feedbackBadge.translationY = 0f
+        feedbackBadge.scaleX = 1f
+        feedbackBadge.scaleY = 1f
+
+        if (feedbackBadge.visibility != View.VISIBLE || feedbackBadge.alpha <= 0f) return
+
+        val startTranslationX =
+            FeedbackBadgeDockMotion.startTranslationDp(toDockLeft) * density
+        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = FeedbackBadgeDockMotion.durationMs
+            interpolator = ENTER_EASING
+            addUpdateListener { animation ->
+                val progress = animation.animatedValue as Float
+                feedbackBadge.translationX = startTranslationX * (1f - progress)
+                feedbackBadge.translationY =
+                    FeedbackBadgeDockMotion.arcTranslationYDp(progress) * density
+                feedbackBadge.scaleX = FeedbackBadgeDockMotion.scaleX(progress)
+                feedbackBadge.scaleY = FeedbackBadgeDockMotion.scaleY(progress)
+            }
+        }
+        badgeDockAnimator = animator
+        animator.start()
+    }
 
     companion object {
         const val PRIMARY_BLUE = 0xFF3B82F6.toInt()
