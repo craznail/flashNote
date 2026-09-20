@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
                 val notes by app.notes.observeNotes().collectAsState(initial = emptyList())
                 val localSummary by app.prefs.localSummaryEnabled.collectAsState()
                 val feedbackBadgePersistent by overlayPrefs.feedbackBadgePersistent.collectAsState()
+                val ballSize by overlayPrefs.ballSize.collectAsState()
                 val simulatePremium by app.prefs.simulatePremium.collectAsState()
                 val remoteAi by app.prefs.remoteAiEnabled.collectAsState()
                 val remoteBaseUrl by app.prefs.remoteAiBaseUrlFlow.collectAsState()
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             localSummaryEnabled = localSummary,
                             feedbackBadgePersistent = feedbackBadgePersistent,
+                            ballSize = ballSize,
                             simulatePremium = simulatePremium,
                             remoteAiEnabled = remoteAi,
                             remoteAiBaseUrl = remoteBaseUrl,
@@ -78,6 +80,10 @@ class MainActivity : ComponentActivity() {
                             onFeedbackBadgePersistentChange = {
                                 overlayPrefs.setFeedbackBadgePersistent(it)
                                 OverlayService.updateFeedbackBadgePersistence(it)
+                            },
+                            onBallSizeChange = {
+                                overlayPrefs.setBallSize(it)
+                                OverlayService.updateBallSize(it)
                             },
                             onSimulatePremiumChange = { app.prefs.setSimulatePremium(it) },
                             onRemoteAiChange = { app.prefs.setRemoteAiEnabled(it) },

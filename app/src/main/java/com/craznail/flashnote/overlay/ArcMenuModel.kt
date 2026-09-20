@@ -61,7 +61,7 @@ internal object ArcMenuDesign {
     const val ballSizeDp = 44f
     const val ballTouchSizeDp = 56f
     const val buttonSizeDp = 40f
-    const val dockedVisibleDp = 33f
+    const val dockedVisibleRatio = 0.75f
     const val feedbackBadgeSizeDp = 14f
     // Ball edge ↔ button edge gap shrunk another 1/3 (19dp → 13dp): 24 + 20 + 13 = 57.
     const val radiusDp = 57f
@@ -71,6 +71,8 @@ internal object ArcMenuDesign {
     const val closeDurationMs = 260L
     const val closeStaggerMs = 24L
     const val idleTimeoutMs = 5_000L
+
+    fun dockedVisibleDp(ballSizeDp: Float): Float = ballSizeDp * dockedVisibleRatio
 
     fun openTotalDuration(itemCount: Int): Long =
         openDurationMs + (itemCount - 1).coerceAtLeast(0) * openStaggerMs

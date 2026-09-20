@@ -2,6 +2,7 @@ package com.craznail.flashnote.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -67,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import android.widget.Toast
 import com.craznail.flashnote.BuildConfig
 import com.craznail.flashnote.R
+import com.craznail.flashnote.data.OverlayBallSize
 import com.craznail.flashnote.data.PreferencesManager
 import com.craznail.flashnote.ui.theme.FlashBackground
 import com.craznail.flashnote.ui.theme.FlashOnSurfaceMuted
@@ -78,6 +80,7 @@ import com.craznail.flashnote.ui.theme.FlashSuccess
 fun SettingsScreen(
     localSummaryEnabled: Boolean,
     feedbackBadgePersistent: Boolean,
+    ballSize: OverlayBallSize,
     simulatePremium: Boolean,
     remoteAiEnabled: Boolean,
     remoteAiBaseUrl: String,
@@ -85,6 +88,7 @@ fun SettingsScreen(
     remoteAiModel: String,
     onLocalSummaryChange: (Boolean) -> Unit,
     onFeedbackBadgePersistentChange: (Boolean) -> Unit,
+    onBallSizeChange: (OverlayBallSize) -> Unit,
     onSimulatePremiumChange: (Boolean) -> Unit,
     onRemoteAiChange: (Boolean) -> Unit,
     onSaveRemoteAiConfig: (baseUrl: String, apiKey: String, model: String) -> Unit,
@@ -161,6 +165,15 @@ fun SettingsScreen(
                     desc = stringResource(R.string.feedback_badge_persistent_desc),
                     checked = feedbackBadgePersistent,
                     onCheckedChange = onFeedbackBadgePersistentChange
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            SettingsCard {
+                BallSizeSetting(
+                    selected = ballSize,
+                    onSelected = onBallSizeChange
                 )
             }
 
@@ -408,6 +421,63 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun BallSizeSetting(
+    selected: OverlayBallSize,
+    onSelected: (OverlayBallSize) -> Unit
+) {
+    val options = listOf(
+        OverlayBallSize.EXTRA_SMALL to stringResource(R.string.ball_size_extra_small),
+        OverlayBallSize.SMALL to stringResource(R.string.ball_size_small),
+        OverlayBallSize.MEDIUM to stringResource(R.string.ball_size_medium),
+        OverlayBallSize.LARGE to stringResource(R.string.ball_size_large),
+        OverlayBallSize.EXTRA_LARGE to stringResource(R.string.ball_size_extra_large)
+    )
+
+    Column {
+        Text(
+            stringResource(R.string.ball_size_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF111827)
+        )
+        Text(
+            stringResource(R.string.ball_size_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = FlashOnSurfaceMuted
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            options.forEach { (size, label) ->
+                val active = size == selected
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (active) FlashPrimary
+                            else Color(0xFFF3F4F6)
+                        )
+                        .clickable { onSelected(size) }
+                        .padding(vertical = 9.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        label,
+                        fontSize = 12.sp,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                        color = if (active) Color.White else Color(0xFF4B5563),
+                        maxLines = 1
+                    )
+                }
+            }
         }
     }
 }

@@ -2,6 +2,7 @@ package com.craznail.flashnote.overlay
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import com.craznail.flashnote.data.OverlayBallSize
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.hypot
@@ -137,10 +138,27 @@ class ArcMenuModelTest {
         assertEquals(44f, ArcMenuDesign.ballSizeDp, 0f)
         assertEquals(56f, ArcMenuDesign.ballTouchSizeDp, 0f)
         assertEquals(40f, ArcMenuDesign.buttonSizeDp, 0f)
-        assertEquals(33f, ArcMenuDesign.dockedVisibleDp, 0f)
+        assertEquals(33f, ArcMenuDesign.dockedVisibleDp(ArcMenuDesign.ballSizeDp), 0f)
         assertEquals(14f, ArcMenuDesign.feedbackBadgeSizeDp, 0f)
         assertEquals(4f, ArcMenuDesign.ballSizeDp - ArcMenuDesign.buttonSizeDp, 0f)
         assertEquals(12f, ArcMenuDesign.ballTouchSizeDp - ArcMenuDesign.ballSizeDp, 0f)
+
+        assertEquals(
+            listOf(32f, 38f, 44f, 50f, 56f),
+            OverlayBallSize.entries.map { it.diameterDp }
+        )
+        OverlayBallSize.entries.forEach { size ->
+            assertTrue(size.diameterDp <= ArcMenuDesign.ballTouchSizeDp)
+            assertEquals(
+                size.diameterDp * 0.75f,
+                ArcMenuDesign.dockedVisibleDp(size.diameterDp),
+                0f
+            )
+        }
+
+        // These stay fixed regardless of the selected main-ball size.
+        assertEquals(40f, ArcMenuDesign.buttonSizeDp, 0f)
+        assertEquals(14f, ArcMenuDesign.feedbackBadgeSizeDp, 0f)
     }
 
     @Test

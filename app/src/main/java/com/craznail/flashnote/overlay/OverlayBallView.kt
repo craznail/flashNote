@@ -25,6 +25,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import com.craznail.flashnote.R
+import com.craznail.flashnote.data.OverlayBallSize
 import com.craznail.flashnote.data.OverlayPreferences
 import java.io.File
 import kotlin.math.abs
@@ -32,8 +33,8 @@ import kotlin.math.roundToInt
 
 /**
  * Floating overlay ball:
- * - Main ball is always the 44dp ice-blue note + lightning identity; touch target stays 56dp
- * - Docked visible diameter is 33dp; press scale 0.92
+ * - Main ball is size-selectable (32–56dp) while the touch target stays 56dp
+ * - Docked visible diameter stays at 75% of the selected ball size; press scale 0.92
  * - Tap toggles arc glass menu (capture only via menu items)
  * - Sub-buttons stay 40dp on a half-ring around the ball
  * - A single 14dp inward-corner badge carries thumbnail / success / failure feedback
@@ -49,8 +50,11 @@ class OverlayBallView @JvmOverloads constructor(
     var onExit: (() -> Unit)? = null
 
     private val density = resources.displayMetrics.density
-    private val ballSizePx = (ArcMenuDesign.ballSizeDp * density).roundToInt()
-    private val visibleWhenDockedPx = (ArcMenuDesign.dockedVisibleDp * density).roundToInt()
+    private val overlayPreferences = OverlayPreferences.get(context)
+    private var currentBallSize = overlayPreferences.ballSize.value
+    private var ballSizePx = (currentBallSize.diameterDp * density).roundToInt()
+    private var visibleWhenDockedPx =
+        (ArcMenuDesign.dockedVisibleDp(currentBallSize.diameterDp) * density).roundToInt()
     private val touchSlop = 8 * density
     private val ballContainer: FrameLayout
     private val iconView: ImageView
@@ -59,8 +63,7 @@ class OverlayBallView @JvmOverloads constructor(
     private val successBadge: View
     private val failureBadge: TextView
     private val badgeModel = FeedbackBadgeModel()
-    private var feedbackBadgePersistent =
-        OverlayPreferences.get(context).feedbackBadgePersistent.value
+    private var feedbackBadgePersistent = overlayPreferences.feedbackBadgePersistent.value
     private var windowParams: WindowManager.LayoutParams? = null
     private var windowManager: WindowManager? = null
     private var overlayType: Int? = null
@@ -288,6 +291,56 @@ class OverlayBallView @JvmOverloads constructor(
         ) {
             badgeModel.restoreDefault(persistThumbnail = enabled)
             transitionBadgeTo(badgeModel.visual, durationMs = 160L)
+        }
+    }
+
+    fun setBallSize(size: OverlayBallSize) {
+        if (size == currentBallSize) return
+
+        currentBallSize = size
+        ballSizePx = (size.diameterDp * density).roundToInt()
+        visibleWhenDockedPx =
+            (ArcMenuDesign.dockedVisibleDp(size.diameterDp) * density).roundToInt()
+
+        badgeDockAnimator?.cancel()
+        feedbackBadge.translationX = 0f
+        feedbackBadge.translationY = 0f
+        feedbackBadge.scaleX = 1f
+        feedbackBadge.scaleY = 1f
+
+        (ballContainer.layoutParams as LayoutParams).also { lp ->
+            lp.width = ballSizePx
+            lp.height = ballSizePx
+            ballContainer.layoutParams = lp
+        }
+        (iconView.layoutParams as LayoutParams).also { lp ->
+            lp.width = ballSizePx
+            lp.height = ballSizePx
+            iconView.layoutParams = lp
+        }
+
+        val wm = windowManager
+        val windowLp = windowParams
+        if (wm != null && windowLp != null) {
+            val dm = resources.displayMetrics
+            val rightDockStartX = dm.widthPixels - visibleWhenDockedPx
+            val targetStartX = DockedBallLayout.dockedStartX(
+                dockLeft = dockedLeft,
+                screenWidth = dm.widthPixels,
+                windowWidth = windowLp.width,
+                rightDockStartX = rightDockStartX
+            )
+            windowLp.gravity = Gravity.TOP or if (dockedLeft) Gravity.START else Gravity.END
+            windowLp.x = DockedBallLayout.windowPlacementFromStartX(
+                dockLeft = dockedLeft,
+                startX = targetStartX,
+                screenWidth = dm.widthPixels,
+                windowWidth = windowLp.width
+            ).edgeOffsetPx
+            pinBallToDockEdge(dockedLeft)
+            runCatching { wm.updateViewLayout(this, windowLp) }
+        } else {
+            positionFeedbackBadge(dockedLeft)
         }
     }
 
@@ -705,7 +758,11 @@ class OverlayBallView @JvmOverloads constructor(
         if (feedbackBadge.visibility != View.VISIBLE || feedbackBadge.alpha <= 0f) return
 
         val startTranslationX =
-            FeedbackBadgeDockMotion.startTranslationDp(toDockLeft) * density
+            FeedbackBadgeDockMotion.startTranslationDp(
+                toDockLeft = toDockLeft,
+                ballSizeDp = currentBallSize.diameterDp,
+                badgeSizeDp = ArcMenuDesign.feedbackBadgeSizeDp
+            ) * density
         val animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = FeedbackBadgeDockMotion.durationMs
             interpolator = ENTER_EASING

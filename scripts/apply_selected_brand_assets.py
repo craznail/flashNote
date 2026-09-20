@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # This is the previously accepted blue-white glass ball with the note element.
 BALL_SOURCE = ROOT / "branding/flashnote_ball_note_source.png"
 BALL_RESOURCE = ROOT / "app/src/main/res/drawable/ic_ball_normal.png"
-RESOURCE_SIZE = 176  # 44dp at xxxhdpi
+RESOURCE_SIZE = 224  # supports the 56dp EXTRA_LARGE ball at xxxhdpi
 
 
 def circular_alpha(image: Image.Image) -> Image.Image:

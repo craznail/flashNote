@@ -21,6 +21,7 @@ import com.craznail.flashnote.MainActivity
 import com.craznail.flashnote.R
 import com.craznail.flashnote.capture.CaptureService
 import com.craznail.flashnote.capture.ProjectionPermissionActivity
+import com.craznail.flashnote.data.OverlayBallSize
 
 /**
  * Foreground service hosting the floating ball.
@@ -228,6 +229,10 @@ class OverlayService : Service() {
 
         fun updateFeedbackBadgePersistence(enabled: Boolean) {
             instance?.ballView?.setFeedbackBadgePersistent(enabled)
+        }
+
+        fun updateBallSize(size: OverlayBallSize) {
+            instance?.ballView?.setBallSize(size)
         }
 
         fun notifySaved(

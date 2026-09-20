@@ -85,4 +85,11 @@
     <string name="failure_tap_for_reason">操作失败，点击浮球查看原因</string>
     <string name="feedback_badge_persistent">提示器常驻</string>
     <string name="feedback_badge_persistent_desc">关闭后，反馈结束时右上角提示球一并隐藏</string>
+    <string name="ball_size_title">浮球大小</string>
+    <string name="ball_size_desc">只调整主浮球，菜单与右上角提示器保持不变</string>
+    <string name="ball_size_extra_small">极小</string>
+    <string name="ball_size_small">小</string>
+    <string name="ball_size_medium">中</string>
+    <string name="ball_size_large">大</string>
+    <string name="ball_size_extra_large">极大</string>
 </resources>
