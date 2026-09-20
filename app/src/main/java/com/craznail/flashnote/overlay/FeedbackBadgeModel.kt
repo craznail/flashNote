@@ -42,15 +42,15 @@ internal class FeedbackBadgeModel(hasThumbnail: Boolean = false) {
         return true
     }
 
-    fun rememberThumbnail() {
+    fun rememberThumbnail(showAsDefault: Boolean = true) {
         hasThumbnail = true
-        if (visual == FeedbackBadgeVisual.HIDDEN) {
+        if (showAsDefault && visual == FeedbackBadgeVisual.HIDDEN) {
             visual = FeedbackBadgeVisual.THUMBNAIL
         }
     }
 
-    fun restoreDefault() {
-        visual = defaultVisual()
+    fun restoreDefault(persistThumbnail: Boolean = true) {
+        visual = if (persistThumbnail) defaultVisual() else FeedbackBadgeVisual.HIDDEN
     }
 
     private fun defaultVisual(): FeedbackBadgeVisual =

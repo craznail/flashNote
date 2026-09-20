@@ -226,6 +226,10 @@ class OverlayService : Service() {
             )
         }
 
+        fun updateFeedbackBadgePersistence(enabled: Boolean) {
+            instance?.ballView?.setFeedbackBadgePersistent(enabled)
+        }
+
         fun notifySaved(
             context: Context,
             imagePath: String? = null,

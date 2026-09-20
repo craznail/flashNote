@@ -84,6 +84,21 @@ class FeedbackBadgeModelTest {
     }
 
     @Test
+    fun nonPersistentModeKeepsThumbnailButHidesItsDefaultVisual() {
+        val model = FeedbackBadgeModel()
+
+        model.rememberThumbnail(showAsDefault = false)
+        assertEquals(FeedbackBadgeVisual.HIDDEN, model.visual)
+
+        model.showSuccess(hasNewThumbnail = false)
+        model.restoreDefault(persistThumbnail = false)
+        assertEquals(FeedbackBadgeVisual.HIDDEN, model.visual)
+
+        model.restoreDefault(persistThumbnail = true)
+        assertEquals(FeedbackBadgeVisual.THUMBNAIL, model.visual)
+    }
+
+    @Test
     fun failureReasonCanOnlyBeConsumedOncePerFailure() {
         val model = FeedbackBadgeModel()
 

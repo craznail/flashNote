@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.lifecycleScope
 import com.craznail.flashnote.data.Note
+import com.craznail.flashnote.data.OverlayPreferences
 import com.craznail.flashnote.overlay.OverlayService
 import com.craznail.flashnote.ui.NoteDetailScreen
 import com.craznail.flashnote.ui.NotesScreen
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
         consumeOpenSettings(intent)
 
         val app = application as FlashNoteApp
+        val overlayPrefs = OverlayPreferences.get(this)
 
         setContent {
             FlashNoteTheme {
@@ -55,6 +57,7 @@ class MainActivity : ComponentActivity() {
                 val overlayRunning by OverlayService.running.collectAsState()
                 val notes by app.notes.observeNotes().collectAsState(initial = emptyList())
                 val localSummary by app.prefs.localSummaryEnabled.collectAsState()
+                val feedbackBadgePersistent by overlayPrefs.feedbackBadgePersistent.collectAsState()
                 val simulatePremium by app.prefs.simulatePremium.collectAsState()
                 val remoteAi by app.prefs.remoteAiEnabled.collectAsState()
                 val remoteBaseUrl by app.prefs.remoteAiBaseUrlFlow.collectAsState()
@@ -65,12 +68,17 @@ class MainActivity : ComponentActivity() {
                     showSettings -> {
                         SettingsScreen(
                             localSummaryEnabled = localSummary,
+                            feedbackBadgePersistent = feedbackBadgePersistent,
                             simulatePremium = simulatePremium,
                             remoteAiEnabled = remoteAi,
                             remoteAiBaseUrl = remoteBaseUrl,
                             remoteAiApiKey = remoteApiKey,
                             remoteAiModel = remoteModel,
                             onLocalSummaryChange = { app.prefs.setLocalSummaryEnabled(it) },
+                            onFeedbackBadgePersistentChange = {
+                                overlayPrefs.setFeedbackBadgePersistent(it)
+                                OverlayService.updateFeedbackBadgePersistence(it)
+                            },
                             onSimulatePremiumChange = { app.prefs.setSimulatePremium(it) },
                             onRemoteAiChange = { app.prefs.setRemoteAiEnabled(it) },
                             onSaveRemoteAiConfig = { url, key, model ->

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Diamond
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.WorkspacePremium
@@ -76,12 +77,14 @@ import com.craznail.flashnote.ui.theme.FlashSuccess
 @Composable
 fun SettingsScreen(
     localSummaryEnabled: Boolean,
+    feedbackBadgePersistent: Boolean,
     simulatePremium: Boolean,
     remoteAiEnabled: Boolean,
     remoteAiBaseUrl: String,
     remoteAiApiKey: String,
     remoteAiModel: String,
     onLocalSummaryChange: (Boolean) -> Unit,
+    onFeedbackBadgePersistentChange: (Boolean) -> Unit,
     onSimulatePremiumChange: (Boolean) -> Unit,
     onRemoteAiChange: (Boolean) -> Unit,
     onSaveRemoteAiConfig: (baseUrl: String, apiKey: String, model: String) -> Unit,
@@ -144,6 +147,20 @@ fun SettingsScreen(
                     desc = stringResource(R.string.local_summary_desc),
                     checked = localSummaryEnabled,
                     onCheckedChange = onLocalSummaryChange
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            SettingsCard {
+                SettingSwitchRow(
+                    icon = Icons.Default.Notifications,
+                    iconBg = FlashPrimary.copy(alpha = 0.12f),
+                    iconTint = FlashPrimary,
+                    title = stringResource(R.string.feedback_badge_persistent),
+                    desc = stringResource(R.string.feedback_badge_persistent_desc),
+                    checked = feedbackBadgePersistent,
+                    onCheckedChange = onFeedbackBadgePersistentChange
                 )
             }
 

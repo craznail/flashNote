@@ -25,6 +25,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import com.craznail.flashnote.R
+import com.craznail.flashnote.data.OverlayPreferences
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -58,6 +59,8 @@ class OverlayBallView @JvmOverloads constructor(
     private val successBadge: View
     private val failureBadge: TextView
     private val badgeModel = FeedbackBadgeModel()
+    private var feedbackBadgePersistent =
+        OverlayPreferences.get(context).feedbackBadgePersistent.value
     private var windowParams: WindowManager.LayoutParams? = null
     private var windowManager: WindowManager? = null
     private var overlayType: Int? = null
@@ -270,9 +273,19 @@ class OverlayBallView @JvmOverloads constructor(
 
     fun setThumbnailBadge(path: String) {
         if (!updateThumbnailDrawable(path)) return
-        badgeModel.rememberThumbnail()
-        if (badgeModel.visual == FeedbackBadgeVisual.THUMBNAIL) {
+        badgeModel.rememberThumbnail(showAsDefault = feedbackBadgePersistent)
+        if (feedbackBadgePersistent && badgeModel.visual == FeedbackBadgeVisual.THUMBNAIL) {
             transitionBadgeTo(FeedbackBadgeVisual.THUMBNAIL, durationMs = 0L)
+        }
+    }
+
+    fun setFeedbackBadgePersistent(enabled: Boolean) {
+        feedbackBadgePersistent = enabled
+        if (badgeModel.visual == FeedbackBadgeVisual.THUMBNAIL ||
+            badgeModel.visual == FeedbackBadgeVisual.HIDDEN
+        ) {
+            badgeModel.restoreDefault(persistThumbnail = enabled)
+            transitionBadgeTo(badgeModel.visual, durationMs = 160L)
         }
     }
 
@@ -567,7 +580,7 @@ class OverlayBallView @JvmOverloads constructor(
         val reset = Runnable {
             if (badgeModel.visual != FeedbackBadgeVisual.FAILURE) return@Runnable
             lastFailReason = null
-            badgeModel.restoreDefault()
+            badgeModel.restoreDefault(persistThumbnail = feedbackBadgePersistent)
             applyBadgeVisualImmediately(badgeModel.visual)
         }
         normalizeRunnable = reset
@@ -579,7 +592,7 @@ class OverlayBallView @JvmOverloads constructor(
         val timeline = FeedbackMotion.successFeedback
         val r = Runnable {
             if (badgeModel.visual != FeedbackBadgeVisual.SUCCESS) return@Runnable
-            badgeModel.restoreDefault()
+            badgeModel.restoreDefault(persistThumbnail = feedbackBadgePersistent)
             transitionBadgeTo(badgeModel.visual, timeline.exitDurationMs)
         }
         normalizeRunnable = r
