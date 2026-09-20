@@ -128,7 +128,7 @@ fun SettingsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.White,
+                    containerColor = FlashBackground,
                     titleContentColor = Color(0xFF111827),
                     navigationIconContentColor = Color(0xFF111827)
                 )
