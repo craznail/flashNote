@@ -61,40 +61,55 @@ class DockedBallLayoutTest {
     }
 
     @Test
-    fun leftAndRightDock_hideTheSameAmountOfTheBall() {
+    fun everyBallSize_exposesExactlyTheRequestedWidthOnBothEdges() {
         val screenWidth = 1_080
         val windowWidth = 56
-        val ballWidth = 44
-        val inset = 6
-        val rightDockStartX = screenWidth - 33
-        val placementLeft = DockedBallLayout.placement(dockLeft = true, insetPx = inset)
-        val placementRight = DockedBallLayout.placement(dockLeft = false, insetPx = inset)
+        val sizesAndVisibleWidths = listOf(
+            32 to 24,
+            38 to 29,
+            44 to 33,
+            50 to 38,
+            56 to 42
+        )
 
-        val leftStartX = DockedBallLayout.dockedStartX(
-            dockLeft = true,
-            screenWidth = screenWidth,
-            windowWidth = windowWidth,
-            rightDockStartX = rightDockStartX
-        )
-        val rightStartX = DockedBallLayout.dockedStartX(
-            dockLeft = false,
-            screenWidth = screenWidth,
-            windowWidth = windowWidth,
-            rightDockStartX = rightDockStartX
-        )
-        val leftVisible = ballWidth + placementLeft.screenLeft(
-            windowX = leftStartX,
-            windowWidth = windowWidth,
-            ballWidth = ballWidth
-        )
-        val rightBallLeft = placementRight.screenLeft(
-            windowX = rightStartX,
-            windowWidth = windowWidth,
-            ballWidth = ballWidth
-        )
-        val rightVisible = screenWidth - rightBallLeft
+        sizesAndVisibleWidths.forEach { (ballWidth, visibleBallWidth) ->
+            val inset = (windowWidth - ballWidth) / 2
+            val placementLeft = DockedBallLayout.placement(dockLeft = true, insetPx = inset)
+            val placementRight = DockedBallLayout.placement(dockLeft = false, insetPx = inset)
 
-        assertEquals(rightVisible, leftVisible)
+            val leftStartX = DockedBallLayout.dockedStartX(
+                dockLeft = true,
+                screenWidth = screenWidth,
+                windowWidth = windowWidth,
+                ballWidth = ballWidth,
+                insetPx = inset,
+                visibleBallWidth = visibleBallWidth
+            )
+            val rightStartX = DockedBallLayout.dockedStartX(
+                dockLeft = false,
+                screenWidth = screenWidth,
+                windowWidth = windowWidth,
+                ballWidth = ballWidth,
+                insetPx = inset,
+                visibleBallWidth = visibleBallWidth
+            )
+
+            val leftBallLeft = placementLeft.screenLeft(
+                windowX = leftStartX,
+                windowWidth = windowWidth,
+                ballWidth = ballWidth
+            )
+            val rightBallLeft = placementRight.screenLeft(
+                windowX = rightStartX,
+                windowWidth = windowWidth,
+                ballWidth = ballWidth
+            )
+            val leftVisible = ballWidth + leftBallLeft
+            val rightVisible = screenWidth - rightBallLeft
+
+            assertEquals(visibleBallWidth, leftVisible)
+            assertEquals(visibleBallWidth, rightVisible)
+        }
     }
 
     @Test

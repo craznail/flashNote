@@ -323,12 +323,14 @@ class OverlayBallView @JvmOverloads constructor(
         val windowLp = windowParams
         if (wm != null && windowLp != null) {
             val dm = resources.displayMetrics
-            val rightDockStartX = dm.widthPixels - visibleWhenDockedPx
+            val insetPx = (touchHotspotPx - ballSizePx) / 2
             val targetStartX = DockedBallLayout.dockedStartX(
                 dockLeft = dockedLeft,
                 screenWidth = dm.widthPixels,
                 windowWidth = windowLp.width,
-                rightDockStartX = rightDockStartX
+                ballWidth = ballSizePx,
+                insetPx = insetPx,
+                visibleBallWidth = visibleWhenDockedPx
             )
             windowLp.gravity = Gravity.TOP or if (dockedLeft) Gravity.START else Gravity.END
             windowLp.x = DockedBallLayout.windowPlacementFromStartX(
@@ -558,12 +560,14 @@ class OverlayBallView @JvmOverloads constructor(
             screenWidth = dm.widthPixels,
             windowWidth = lp.width
         )
-        val rightDockStartX = dm.widthPixels - visibleWhenDockedPx
+        val insetPx = (touchHotspotPx - ballSizePx) / 2
         val targetStartX = DockedBallLayout.dockedStartX(
             dockLeft = nextDockLeft,
             screenWidth = dm.widthPixels,
             windowWidth = lp.width,
-            rightDockStartX = rightDockStartX
+            ballWidth = ballSizePx,
+            insetPx = insetPx,
+            visibleBallWidth = visibleWhenDockedPx
         )
         val targetX = DockedBallLayout.windowPlacementFromStartX(
             dockLeft = nextDockLeft,
