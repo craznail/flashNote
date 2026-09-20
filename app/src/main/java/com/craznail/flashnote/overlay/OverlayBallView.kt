@@ -214,7 +214,7 @@ class OverlayBallView @JvmOverloads constructor(
         feedbackTipRunnable?.let { handler.removeCallbacks(it) }
         cancelFeedbackAnimations()
         badgeDockAnimator?.cancel()
-        sidePillWindow?.dismiss(animated = false)
+        sidePillWindow?.release()
         sidePillWindow = null
         windowManager = null
         super.onDetachedFromWindow()

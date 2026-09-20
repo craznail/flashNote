@@ -110,7 +110,7 @@ internal class SidePillWindow(
         if (!attached) return
         pill.animate().cancel()
         if (!animated) {
-            remove()
+            hideWithoutRemoving()
             return
         }
         val offsets = FeedbackMotion.pillOffsets(dockedLeft)
@@ -119,13 +119,29 @@ internal class SidePillWindow(
             .translationX(offsets.exitToDp * density)
             .setDuration(FeedbackMotion.failureRecovery.pillExitDurationMs)
             .setInterpolator(EXIT_EASING)
-            .withEndAction { remove() }
+            .withEndAction { hideWithoutRemoving() }
             .start()
     }
 
-    private fun remove() {
+    /**
+     * Keep the overlay window attached after a visual dismiss.
+     *
+     * Some Android/MIUI compositors can briefly flash a translucent overlay when
+     * removeView() immediately follows an alpha animation. Reusing the same hidden
+     * window avoids that composition-layer teardown/recreate cycle entirely.
+     */
+    private fun hideWithoutRemoving() {
+        pill.animate().cancel()
+        pill.alpha = 0f
+        pill.translationX = 0f
+        pill.visibility = View.INVISIBLE
+    }
+
+    fun release() {
+        pill.animate().cancel()
         if (attached) {
-            runCatching { windowManager.removeView(pill) }
+            pill.visibility = View.INVISIBLE
+            runCatching { windowManager.removeViewImmediate(pill) }
             attached = false
         }
     }
