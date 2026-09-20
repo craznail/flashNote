@@ -88,7 +88,9 @@ class OverlayBallView @JvmOverloads constructor(
     private var feedbackTipRunnable: Runnable? = null
     private var badgeDockAnimator: ValueAnimator? = null
     private var idleCollapseRunnable: Runnable? = null
+    private var pendingMenuOpenRunnable: Runnable? = null
     private var idleCollapsed = false
+    private var downStartedFromIdle = false
 
     private val touchHotspotPx = (ArcMenuDesign.ballTouchSizeDp * density).roundToInt()
 
@@ -216,6 +218,8 @@ class OverlayBallView @JvmOverloads constructor(
         feedbackTipRunnable?.let { handler.removeCallbacks(it) }
         idleCollapseRunnable?.let { handler.removeCallbacks(it) }
         idleCollapseRunnable = null
+        pendingMenuOpenRunnable?.let { handler.removeCallbacks(it) }
+        pendingMenuOpenRunnable = null
         cancelFeedbackAnimations()
         badgeDockAnimator?.cancel()
         ballContainer.animate().cancel()
@@ -511,6 +515,9 @@ class OverlayBallView @JvmOverloads constructor(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                pendingMenuOpenRunnable?.let { handler.removeCallbacks(it) }
+                pendingMenuOpenRunnable = null
+                downStartedFromIdle = idleCollapsed
                 expandFromIdle()
                 cancelIdleCollapse()
                 // This fixed window owns only the ball; menu buttons live in another window.
@@ -526,6 +533,8 @@ class OverlayBallView @JvmOverloads constructor(
                 val dx = event.rawX - downRawX
                 val dy = event.rawY - downRawY
                 if (abs(dx) > touchSlop || abs(dy) > touchSlop) {
+                    pendingMenuOpenRunnable?.let { handler.removeCallbacks(it) }
+                    pendingMenuOpenRunnable = null
                     // Close the independent menu before moving.
                     if (!moved && menuState.isOpen) hideActionMenu(animate = false)
                     moved = true
@@ -550,6 +559,11 @@ class OverlayBallView @JvmOverloads constructor(
                         when {
                             badgeModel.visual == FeedbackBadgeVisual.FAILURE && !menuState.isOpen -> showFailReason()
                             menuState.isOpen -> hideActionMenu()
+                            downStartedFromIdle -> {
+                                val elapsedMs = event.eventTime - event.downTime
+                                val remainingMs = ArcMenuDesign.remainingIdleExpandMs(elapsedMs)
+                                scheduleMenuOpenAfterIdleExpansion(remainingMs)
+                            }
                             else -> showActionMenu()
                         }
                     }
@@ -558,6 +572,7 @@ class OverlayBallView @JvmOverloads constructor(
                         scheduleIdleCollapse(ArcMenuDesign.idleCollapseDelayMs + 220L)
                     }
                 }
+                downStartedFromIdle = false
                 return true
             }
         }
@@ -712,6 +727,27 @@ class OverlayBallView @JvmOverloads constructor(
             .setDuration(ArcMenuDesign.idleExpandDurationMs)
             .setInterpolator(ENTER_EASING)
             .start()
+    }
+
+    private fun scheduleMenuOpenAfterIdleExpansion(delayMs: Long) {
+        pendingMenuOpenRunnable?.let { handler.removeCallbacks(it) }
+        val open = Runnable {
+            pendingMenuOpenRunnable = null
+            if (
+                visibility == View.VISIBLE &&
+                !moved &&
+                !menuState.isOpen &&
+                arcMenuWindow == null
+            ) {
+                showActionMenu()
+            }
+        }
+        pendingMenuOpenRunnable = open
+        if (delayMs <= 0L) {
+            handler.post(open)
+        } else {
+            handler.postDelayed(open, delayMs)
+        }
     }
 
     /** Tapping a failed ball reveals the reason, then restores the previous thumbnail state. */

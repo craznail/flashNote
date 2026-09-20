@@ -83,6 +83,9 @@ internal object ArcMenuDesign {
     fun dockedVisibleDp(ballSizeDp: Float): Float = ballSizeDp * dockedVisibleRatio
     fun idleDockedVisibleDp(ballSizeDp: Float): Float = ballSizeDp * idleDockedVisibleRatio
 
+    fun remainingIdleExpandMs(elapsedMs: Long): Long =
+        (idleExpandDurationMs - elapsedMs.coerceAtLeast(0L)).coerceAtLeast(0L)
+
     fun openTotalDuration(itemCount: Int): Long =
         openDurationMs + (itemCount - 1).coerceAtLeast(0) * openStaggerMs
 

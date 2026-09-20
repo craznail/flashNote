@@ -134,6 +134,14 @@ class ArcMenuModelTest {
     }
 
     @Test
+    fun idleBall_waitsForExpansionBeforeOpeningMenu() {
+        assertEquals(ArcMenuDesign.idleExpandDurationMs, ArcMenuDesign.remainingIdleExpandMs(0L))
+        assertEquals(90L, ArcMenuDesign.remainingIdleExpandMs(50L))
+        assertEquals(0L, ArcMenuDesign.remainingIdleExpandMs(ArcMenuDesign.idleExpandDurationMs))
+        assertEquals(0L, ArcMenuDesign.remainingIdleExpandMs(500L))
+    }
+
+    @Test
     fun primaryBall_isCompactButKeepsAComfortableTouchTarget() {
         assertEquals(44f, ArcMenuDesign.ballSizeDp, 0f)
         assertEquals(56f, ArcMenuDesign.ballTouchSizeDp, 0f)
