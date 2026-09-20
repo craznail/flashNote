@@ -47,8 +47,11 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Holds MediaProjection + a **persistent VirtualDisplay** for the process lifetime.
- * Releasing the VD after each shot causes HyperOS/Android 14 to drop「共享屏幕中」~10s later.
+ * Screenshot processing service.
+ *
+ * Android 11+ uses one-shot AccessibilityService screenshots. Android 10 and below retain
+ * the legacy MediaProjection path for compatibility. Both backends feed the same PNG/OCR/
+ * summary/note pipeline below.
  */
 class CaptureService : Service() {
 
@@ -94,8 +97,10 @@ class CaptureService : Service() {
             ACTION_CAPTURE -> {
                 withSummary = intent.getBooleanExtra(EXTRA_WITH_SUMMARY, false)
                 imageOnly = intent.getBooleanExtra(EXTRA_IMAGE_ONLY, false)
-                startAsForeground()
-                ensureVirtualDisplay()
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                    startAsForeground()
+                    ensureVirtualDisplay()
+                }
                 doCapture()
             }
             ACTION_STOP -> {
@@ -202,6 +207,89 @@ class CaptureService : Service() {
     }
 
     private fun doCapture() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            doAccessibilityCapture()
+        } else {
+            doProjectionCapture()
+        }
+    }
+
+    private fun doAccessibilityCapture() {
+        if (!FlashNoteAccessibilityService.isConnected()) {
+            OverlayService.notifyUnauthorized(
+                this,
+                getString(R.string.accessibility_capture_enable)
+            )
+            stopSelf()
+            return
+        }
+        if (!capturing.compareAndSet(false, true)) return
+
+        scope.launch {
+            try {
+                // Hide only FlashNote's own overlay for a few compositor frames.
+                // Unlike FLAG_SECURE, this reveals the real app pixels underneath.
+                OverlayService.setCaptureHidden(true)
+                delay(64L)
+
+                val started = FlashNoteAccessibilityService.requestScreenshot { result ->
+                    scope.launch {
+                        try {
+                            OverlayService.setCaptureHidden(false)
+                            val bitmap = result.getOrNull()
+                            if (bitmap != null) {
+                                processCapturedBitmap(cropSystemStatusBar(bitmap))
+                            } else {
+                                val error = result.exceptionOrNull()
+                                val reason = if (
+                                    error is ScreenshotCaptureException &&
+                                    error.errorCode ==
+                                    android.accessibilityservice.AccessibilityService
+                                        .ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT
+                                ) {
+                                    getString(R.string.accessibility_capture_too_fast)
+                                } else {
+                                    getString(R.string.accessibility_capture_failed)
+                                }
+                                OverlayService.notifyUnauthorized(this@CaptureService, reason)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            OverlayService.notifyUnauthorized(
+                                this@CaptureService,
+                                getString(R.string.accessibility_capture_failed)
+                            )
+                        } finally {
+                            OverlayService.setCaptureHidden(false)
+                            capturing.set(false)
+                            stopSelf()
+                        }
+                    }
+                }
+
+                if (!started) {
+                    OverlayService.setCaptureHidden(false)
+                    OverlayService.notifyUnauthorized(
+                        this@CaptureService,
+                        getString(R.string.accessibility_capture_enable)
+                    )
+                    capturing.set(false)
+                    stopSelf()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                OverlayService.setCaptureHidden(false)
+                OverlayService.notifyUnauthorized(
+                    this@CaptureService,
+                    getString(R.string.accessibility_capture_failed)
+                )
+                capturing.set(false)
+                stopSelf()
+            }
+        }
+    }
+
+    private fun doProjectionCapture() {
         val mp = projection ?: activeProjection
         if (mp == null) {
             startActivity(
@@ -215,84 +303,89 @@ class CaptureService : Service() {
 
         scope.launch {
             try {
-                // FLAG_SECURE leaves a black replacement surface on HyperOS/API 36.
-                // Hide our transparent overlay for a few compositor frames instead so
-                // MediaProjection sees the real app pixels underneath the floating ball.
                 OverlayService.setCaptureHidden(true)
                 delay(64L)
                 val bitmap = withContext(Dispatchers.IO) { grabBitmapFromReader() }
                 OverlayService.setCaptureHidden(false)
 
                 if (bitmap != null) {
-                    val path = withContext(Dispatchers.IO) { savePng(bitmap) }
-                    val app = application as FlashNoteApp
-                    val prefs = PreferencesManager.get(this@CaptureService)
-                    var ocr: String? = null
-                    var summary: String? = null
-                    var mode = SummaryMode.NONE
-                    var toastMsg: String? = null
-                    val summaryRequested =
-                        withSummary || prefs.localSummaryEnabled.value
-                    val skipText = imageOnly || (!withSummary && !prefs.localSummaryEnabled.value)
-                    if (!skipText) {
-                        ocr = withContext(Dispatchers.Default) { LocalOcr.recognize(bitmap) }
-                        if (summaryRequested) {
-                            val useRemote =
-                                withSummary && prefs.isPremium && prefs.remoteAiEnabled.value
-                            if (useRemote) {
-                                if (!RemoteAiClient.isConfigured(prefs)) {
-                                    summary = LocalSummary.fromOcr(ocr)
-                                    if (summary != null) {
-                                        mode = SummaryMode.LOCAL
-                                    }
-                                    toastMsg = getString(R.string.remote_not_configured)
-                                } else {
-                                    OverlayService.notifyLoading(
-                                        this@CaptureService,
-                                        getString(R.string.summarizing_remote)
-                                    )
-                                    val remote = withContext(Dispatchers.IO) {
-                                        RemoteAiClient.summarize(prefs, ocr)
-                                    }
-                                    if (remote.isSuccess) {
-                                        summary = remote.getOrNull()
-                                        mode = SummaryMode.REMOTE
-                                    } else {
-                                        summary = LocalSummary.fromOcr(ocr)
-                                        if (summary != null) {
-                                            mode = SummaryMode.LOCAL
-                                            toastMsg = getString(R.string.remote_fallback_local)
-                                        } else {
-                                            toastMsg = getString(R.string.remote_fallback_image)
-                                        }
-                                    }
-                                }
-                            } else {
-                                summary = LocalSummary.fromOcr(ocr)
-                                mode = if (summary != null) SummaryMode.LOCAL else SummaryMode.NONE
-                            }
-                        }
-                    }
-                    bitmap.recycle()
-                    app.notes.saveNote(path, ocr, summary, mode)
-                    OverlayService.notifySaved(
-                        this@CaptureService,
-                        path,
-                        toastMsg ?: getString(R.string.saved_to_notes)
-                    )
+                    processCapturedBitmap(bitmap)
                 } else {
-                    OverlayService.notifyUnauthorized(this@CaptureService, getString(R.string.capture_failed_save))
+                    OverlayService.notifyUnauthorized(
+                        this@CaptureService,
+                        getString(R.string.capture_failed_save)
+                    )
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                // Clears sticky loading pill if remote was in-flight when capture errored.
-                OverlayService.notifyUnauthorized(this@CaptureService, getString(R.string.capture_failed_save))
+                OverlayService.notifyUnauthorized(
+                    this@CaptureService,
+                    getString(R.string.capture_failed_save)
+                )
             } finally {
                 OverlayService.setCaptureHidden(false)
                 capturing.set(false)
-                // Keep FGS + VD + MediaProjection alive.
+                // Legacy projection path keeps FGS + VD + MediaProjection alive.
             }
         }
+    }
+
+    private suspend fun processCapturedBitmap(bitmap: Bitmap) {
+        val path = withContext(Dispatchers.IO) { savePng(bitmap) }
+        val app = application as FlashNoteApp
+        val prefs = PreferencesManager.get(this@CaptureService)
+        var ocr: String? = null
+        var summary: String? = null
+        var mode = SummaryMode.NONE
+        var toastMsg: String? = null
+        val summaryRequested = withSummary || prefs.localSummaryEnabled.value
+        val skipText = imageOnly || (!withSummary && !prefs.localSummaryEnabled.value)
+
+        if (!skipText) {
+            ocr = withContext(Dispatchers.Default) { LocalOcr.recognize(bitmap) }
+            if (summaryRequested) {
+                val useRemote =
+                    withSummary && prefs.isPremium && prefs.remoteAiEnabled.value
+                if (useRemote) {
+                    if (!RemoteAiClient.isConfigured(prefs)) {
+                        summary = LocalSummary.fromOcr(ocr)
+                        if (summary != null) mode = SummaryMode.LOCAL
+                        toastMsg = getString(R.string.remote_not_configured)
+                    } else {
+                        OverlayService.notifyLoading(
+                            this@CaptureService,
+                            getString(R.string.summarizing_remote)
+                        )
+                        val remote = withContext(Dispatchers.IO) {
+                            RemoteAiClient.summarize(prefs, ocr)
+                        }
+                        if (remote.isSuccess) {
+                            summary = remote.getOrNull()
+                            mode = SummaryMode.REMOTE
+                        } else {
+                            summary = LocalSummary.fromOcr(ocr)
+                            if (summary != null) {
+                                mode = SummaryMode.LOCAL
+                                toastMsg = getString(R.string.remote_fallback_local)
+                            } else {
+                                toastMsg = getString(R.string.remote_fallback_image)
+                            }
+                        }
+                    }
+                } else {
+                    summary = LocalSummary.fromOcr(ocr)
+                    mode = if (summary != null) SummaryMode.LOCAL else SummaryMode.NONE
+                }
+            }
+        }
+
+        bitmap.recycle()
+        app.notes.saveNote(path, ocr, summary, mode)
+        OverlayService.notifySaved(
+            this@CaptureService,
+            path,
+            toastMsg ?: getString(R.string.saved_to_notes)
+        )
     }
 
     private fun grabBitmapFromReader(): Bitmap? {
@@ -467,7 +560,11 @@ class CaptureService : Service() {
                 putExtra(EXTRA_WITH_SUMMARY, withSummary)
                 putExtra(EXTRA_IMAGE_ONLY, imageOnly)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // OverlayService is already foreground; Accessibility capture needs no
+                // mediaProjection-type foreground service or persistent notification.
+                context.startService(i)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(i)
             } else {
                 context.startService(i)

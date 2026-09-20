@@ -94,4 +94,9 @@
     <string name="ball_size_medium">中</string>
     <string name="ball_size_large">大</string>
     <string name="ball_size_extra_large">极大</string>
+    <string name="accessibility_service_label">闪记高清截图</string>
+    <string name="accessibility_service_description">用于在你主动点击悬浮球时执行一次高清截图，不读取页面内容。</string>
+    <string name="accessibility_capture_enable">请开启“闪记高清截图”无障碍服务</string>
+    <string name="accessibility_capture_failed">高清截图失败，请重试</string>
+    <string name="accessibility_capture_too_fast">截图太频繁，请稍后再试</string>
 </resources>

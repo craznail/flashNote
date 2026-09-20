@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.provider.Settings
 import android.view.WindowManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +21,7 @@ import com.craznail.flashnote.FlashNoteApp
 import com.craznail.flashnote.MainActivity
 import com.craznail.flashnote.R
 import com.craznail.flashnote.capture.CaptureService
+import com.craznail.flashnote.capture.FlashNoteAccessibilityService
 import com.craznail.flashnote.capture.ProjectionPermissionActivity
 import com.craznail.flashnote.data.OverlayBallSize
 
@@ -176,6 +178,28 @@ class OverlayService : Service() {
     }
 
     private fun triggerCapture() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (FlashNoteAccessibilityService.isConnected()) {
+                CaptureService.startCapture(
+                    this,
+                    withSummary = wantSummary,
+                    imageOnly = wantImageOnly
+                )
+            } else {
+                ballView?.showSystemTip(
+                    getString(R.string.accessibility_capture_enable),
+                    durationMs = 2_400L
+                )
+                startActivity(
+                    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                )
+            }
+            return
+        }
+
+        // Android 10 and below keep the legacy MediaProjection fallback.
         if (CaptureService.hasActiveProjection()) {
             CaptureService.startCapture(
                 this,
@@ -183,7 +207,6 @@ class OverlayService : Service() {
                 imageOnly = wantImageOnly
             )
         } else {
-            // No token → system MediaProjection consent (brief translucent activity)
             startActivity(
                 Intent(this, ProjectionPermissionActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
