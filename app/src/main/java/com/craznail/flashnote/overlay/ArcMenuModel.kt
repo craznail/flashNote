@@ -62,17 +62,26 @@ internal object ArcMenuDesign {
     const val ballTouchSizeDp = 56f
     const val buttonSizeDp = 40f
     const val dockedVisibleRatio = 0.75f
+    const val idleDockedVisibleRatio = 0.26f
+    const val idleBallAlpha = 0.68f
+    const val idleBallScale = 0.96f
+    const val idleCollapseDelayMs = 2_600L
+    const val idleCollapseDurationMs = 220L
+    const val idleExpandDurationMs = 140L
     const val feedbackBadgeSizeDp = 14f
-    // Ball edge ↔ button edge gap shrunk another 1/3 (19dp → 13dp): 24 + 20 + 13 = 57.
+
+    // Compact inward fan. It keeps the first action visually closest to the top while
+    // avoiding the rigid half-circle feel of the previous 75/25-degree layout.
     const val radiusDp = 57f
-    const val startScale = 0.42f
-    const val openDurationMs = 380L
-    const val openStaggerMs = 48L
-    const val closeDurationMs = 260L
-    const val closeStaggerMs = 24L
+    const val startScale = 0.70f
+    const val openDurationMs = 230L
+    const val openStaggerMs = 28L
+    const val closeDurationMs = 180L
+    const val closeStaggerMs = 16L
     const val idleTimeoutMs = 5_000L
 
     fun dockedVisibleDp(ballSizeDp: Float): Float = ballSizeDp * dockedVisibleRatio
+    fun idleDockedVisibleDp(ballSizeDp: Float): Float = ballSizeDp * idleDockedVisibleRatio
 
     fun openTotalDuration(itemCount: Int): Long =
         openDurationMs + (itemCount - 1).coerceAtLeast(0) * openStaggerMs
@@ -82,18 +91,16 @@ internal object ArcMenuDesign {
 }
 
 internal object ArcMenuPalette {
-    const val highlightArgb = 0xE05B606B.toInt()
-    const val fillArgb = 0xD13A3D46.toInt()
-    const val edgeArgb = 0xE0262931.toInt()
-    const val strokeArgb = 0xBFDDE3EE.toInt()
+    const val fillArgb = 0xD944474F.toInt()
+    const val strokeArgb = 0x30FFFFFF
     const val iconArgb = 0xFFFFFFFF.toInt()
 }
 
 internal object ArcMenuGeometry {
-    // Even half-ring around the ball, first/last pulled 15° inward from straight
-    // above/below so they do not hug the screen edge.
-    private val leftDockAngles = floatArrayOf(-75f, -25f, 25f, 75f)
-    private val rightDockAngles = floatArrayOf(255f, 205f, 155f, 105f)
+    // Inward fan inspired by Android's accessibility floating shortcut: compact,
+    // vertically ordered, and slightly flatter than a mathematical half-ring.
+    private val leftDockAngles = floatArrayOf(-66f, -22f, 22f, 66f)
+    private val rightDockAngles = floatArrayOf(246f, 202f, 158f, 114f)
 
     fun itemCenters(
         dockLeft: Boolean,

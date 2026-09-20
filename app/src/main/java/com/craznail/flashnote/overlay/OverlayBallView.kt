@@ -34,9 +34,9 @@ import kotlin.math.roundToInt
 /**
  * Floating overlay ball:
  * - Main ball is size-selectable (32–56dp) while the touch target stays 56dp
- * - Docked visible diameter stays at 75% of the selected ball size; press scale 0.92
- * - Tap toggles arc glass menu (capture only via menu items)
- * - Sub-buttons stay 40dp on a half-ring around the ball
+ * - Active dock exposes 75%; after idle it retracts to a low-profile 26% edge sliver
+ * - Tap toggles a compact inward fan menu (capture only via menu items)
+ * - Sub-buttons stay 40dp while menu visuals remain deliberately quiet
  * - A single 14dp inward-corner badge carries thumbnail / success / failure feedback
  */
 class OverlayBallView @JvmOverloads constructor(
@@ -87,6 +87,8 @@ class OverlayBallView @JvmOverloads constructor(
     private var badgeExitRunnable: Runnable? = null
     private var feedbackTipRunnable: Runnable? = null
     private var badgeDockAnimator: ValueAnimator? = null
+    private var idleCollapseRunnable: Runnable? = null
+    private var idleCollapsed = false
 
     private val touchHotspotPx = (ArcMenuDesign.ballTouchSizeDp * density).roundToInt()
 
@@ -202,6 +204,7 @@ class OverlayBallView @JvmOverloads constructor(
         windowParams = params
         pinBallToDockEdge(dockLeft = false)
         wm.addView(this, params)
+        scheduleIdleCollapse()
         return params
     }
 
@@ -211,8 +214,11 @@ class OverlayBallView @JvmOverloads constructor(
         normalizeRunnable?.let { handler.removeCallbacks(it) }
         badgeExitRunnable?.let { handler.removeCallbacks(it) }
         feedbackTipRunnable?.let { handler.removeCallbacks(it) }
+        idleCollapseRunnable?.let { handler.removeCallbacks(it) }
+        idleCollapseRunnable = null
         cancelFeedbackAnimations()
         badgeDockAnimator?.cancel()
+        ballContainer.animate().cancel()
         sidePillWindow?.release()
         sidePillWindow = null
         windowManager = null
@@ -224,6 +230,7 @@ class OverlayBallView @JvmOverloads constructor(
      * A new thumbnail is installed underneath the success layer before the crossfade starts.
      */
     fun showSuccessFeedback(tipText: String? = null, thumbnailPath: String? = null) {
+        expandFromIdle()
         clearSidePill(immediate = true)
         cancelFeedbackState()
         lastFailReason = null
@@ -236,6 +243,7 @@ class OverlayBallView @JvmOverloads constructor(
         val timeline = FeedbackMotion.successFeedback
         transitionBadgeTo(FeedbackBadgeVisual.SUCCESS, timeline.enterDurationMs)
         scheduleSuccessExit()
+        scheduleIdleCollapse(timeline.totalDurationMs + ArcMenuDesign.idleCollapseDelayMs)
 
         val tip = tipText?.takeIf { it.isNotBlank() }
         if (tip != null) {
@@ -258,6 +266,8 @@ class OverlayBallView @JvmOverloads constructor(
     }
 
     fun showFailure(reason: String) {
+        expandFromIdle()
+        cancelIdleCollapse()
         clearSidePill(immediate = true)
         cancelFeedbackState()
         lastFailReason = reason
@@ -289,8 +299,11 @@ class OverlayBallView @JvmOverloads constructor(
 
     fun setCaptureHidden(hidden: Boolean) {
         if (hidden) {
+            cancelIdleCollapse()
             hideActionMenu(animate = false)
             clearSidePill(immediate = true)
+        } else {
+            scheduleIdleCollapse()
         }
         visibility = if (hidden) View.INVISIBLE else View.VISIBLE
     }
@@ -345,6 +358,8 @@ class OverlayBallView @JvmOverloads constructor(
         } else {
             positionFeedbackBadge(dockedLeft)
         }
+        expandFromIdle(animated = false)
+        scheduleIdleCollapse()
     }
 
     private fun updateThumbnailDrawable(path: String): Boolean {
@@ -386,6 +401,7 @@ class OverlayBallView @JvmOverloads constructor(
         hideToastRunnable = null
         pillSticky = false
         sidePillWindow?.dismiss(animated = !immediate)
+        scheduleIdleCollapse()
     }
 
     private fun showSidePill(
@@ -394,6 +410,8 @@ class OverlayBallView @JvmOverloads constructor(
         durationMs: Long = 1_200L,
         sticky: Boolean = false
     ) {
+        expandFromIdle()
+        cancelIdleCollapse()
         hideToastRunnable?.let { handler.removeCallbacks(it) }
         hideToastRunnable = null
         pillSticky = sticky
@@ -417,7 +435,9 @@ class OverlayBallView @JvmOverloads constructor(
         }
         val hide = Runnable {
             pillSticky = false
+            hideToastRunnable = null
             sidePillWindow?.dismiss(animated = true)
+            scheduleIdleCollapse()
         }
         hideToastRunnable = hide
         // Sticky: safety timeout only; normal tips auto-dismiss.
@@ -425,6 +445,8 @@ class OverlayBallView @JvmOverloads constructor(
     }
 
     private fun showActionMenu() {
+        expandFromIdle()
+        cancelIdleCollapse()
         if (menuState.isOpen || arcMenuWindow != null) return
         if (menuState.toggle() != ArcMenuTransition.OPEN) return
 
@@ -448,6 +470,7 @@ class OverlayBallView @JvmOverloads constructor(
             onDismissed = {
                 arcMenuWindow = null
                 menuState.close()
+                scheduleIdleCollapse()
             }
         )
         arcMenuWindow = menu
@@ -488,6 +511,8 @@ class OverlayBallView @JvmOverloads constructor(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                expandFromIdle()
+                cancelIdleCollapse()
                 // This fixed window owns only the ball; menu buttons live in another window.
                 downRawX = event.rawX
                 downRawY = event.rawY
@@ -528,7 +553,10 @@ class OverlayBallView @JvmOverloads constructor(
                             else -> showActionMenu()
                         }
                     }
-                    moved -> snapToEdge(wm, lp)
+                    moved -> {
+                        snapToEdge(wm, lp)
+                        scheduleIdleCollapse(ArcMenuDesign.idleCollapseDelayMs + 220L)
+                    }
                 }
                 return true
             }
@@ -615,6 +643,77 @@ class OverlayBallView @JvmOverloads constructor(
         positionFeedbackBadge(dockLeft)
     }
 
+    private fun cancelIdleCollapse() {
+        idleCollapseRunnable?.let(handler::removeCallbacks)
+        idleCollapseRunnable = null
+    }
+
+    private fun scheduleIdleCollapse(delayMs: Long = ArcMenuDesign.idleCollapseDelayMs) {
+        cancelIdleCollapse()
+        val runnable = Runnable {
+            idleCollapseRunnable = null
+            if (canCollapseIdle()) collapseToIdle()
+        }
+        idleCollapseRunnable = runnable
+        handler.postDelayed(runnable, delayMs)
+    }
+
+    private fun canCollapseIdle(): Boolean =
+        visibility == View.VISIBLE &&
+            !menuState.isOpen &&
+            hideToastRunnable == null &&
+            !pillSticky &&
+            badgeModel.visual != FeedbackBadgeVisual.SUCCESS &&
+            badgeModel.visual != FeedbackBadgeVisual.FAILURE
+
+    private fun collapseToIdle() {
+        if (idleCollapsed || !canCollapseIdle()) return
+        idleCollapsed = true
+
+        val idleVisiblePx =
+            (ArcMenuDesign.idleDockedVisibleDp(currentBallSize.diameterDp) * density).roundToInt()
+        val shift = (visibleWhenDockedPx - idleVisiblePx).coerceAtLeast(0).toFloat()
+        val targetTranslation = if (dockedLeft) -shift else shift
+
+        ballContainer.animate().cancel()
+        ballContainer.animate()
+            .translationX(targetTranslation)
+            .alpha(ArcMenuDesign.idleBallAlpha)
+            .scaleX(ArcMenuDesign.idleBallScale)
+            .scaleY(ArcMenuDesign.idleBallScale)
+            .setDuration(ArcMenuDesign.idleCollapseDurationMs)
+            .setInterpolator(EXIT_EASING)
+            .start()
+    }
+
+    private fun expandFromIdle(animated: Boolean = true) {
+        cancelIdleCollapse()
+        val needsExpansion = idleCollapsed ||
+            ballContainer.translationX != 0f ||
+            ballContainer.alpha != 1f ||
+            ballContainer.scaleX != 1f
+        idleCollapsed = false
+        if (!needsExpansion) return
+
+        ballContainer.animate().cancel()
+        if (!animated) {
+            ballContainer.translationX = 0f
+            ballContainer.alpha = 1f
+            ballContainer.scaleX = 1f
+            ballContainer.scaleY = 1f
+            return
+        }
+
+        ballContainer.animate()
+            .translationX(0f)
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(ArcMenuDesign.idleExpandDurationMs)
+            .setInterpolator(ENTER_EASING)
+            .start()
+    }
+
     /** Tapping a failed ball reveals the reason, then restores the previous thumbnail state. */
     private fun showFailReason() {
         if (!badgeModel.consumeFailureReason()) return
@@ -644,6 +743,7 @@ class OverlayBallView @JvmOverloads constructor(
             // Visual recovery already finished through a crossfade above. Only clear
             // the consumed failure payload here so the final frame is never re-applied.
             lastFailReason = null
+            scheduleIdleCollapse()
         }
         normalizeRunnable = reset
         handler.postDelayed(reset, timeline.resetDelayMs)

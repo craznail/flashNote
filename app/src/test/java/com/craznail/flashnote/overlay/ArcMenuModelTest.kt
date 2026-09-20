@@ -7,8 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.hypot
 
-private val sin75 = kotlin.math.sin(Math.toRadians(75.0)).toFloat()
-private val cos75 = kotlin.math.cos(Math.toRadians(75.0)).toFloat()
+private val sin66 = kotlin.math.sin(Math.toRadians(66.0)).toFloat()
+private val cos66 = kotlin.math.cos(Math.toRadians(66.0)).toFloat()
 
 class ArcMenuModelTest {
 
@@ -46,7 +46,7 @@ class ArcMenuModelTest {
     }
 
     @Test
-    fun rightDockedMenu_ringsEvenlyWithEndsPulledInward() {
+    fun rightDockedMenu_formsCompactInwardFan() {
         val centers = ArcMenuGeometry.itemCenters(
             dockLeft = false,
             anchorX = 100f,
@@ -55,20 +55,20 @@ class ArcMenuModelTest {
         )
 
         assertEquals(4, centers.size)
-        // Even 50° spacing, opening toward screen center (left side)
+        // Compact 44° spacing, opening toward screen center (left side)
         assertTrue(centers.all { it.x <= 100f })
         assertTrue(centers.zipWithNext().all { (first, second) -> first.y < second.y })
         assertEquals(centers[0].x, centers[3].x, 0.01f)
         assertEquals(centers[1].x, centers[2].x, 0.01f)
-        // First/last pulled inward from straight above/below (75°, not 90°)
-        assertEquals(100f - 60f * cos75, centers.first().x, 0.01f)
-        assertEquals(100f - 60f * sin75, centers.first().y, 0.01f)
+        // First/last pulled further inward from straight above/below (66°, not 90°)
+        assertEquals(100f - 60f * cos66, centers.first().x, 0.01f)
+        assertEquals(100f - 60f * sin66, centers.first().y, 0.01f)
         assertEquals(centers.first().x, centers.last().x, 0.01f)
-        assertEquals(100f + 60f * sin75, centers.last().y, 0.01f)
+        assertEquals(100f + 60f * sin66, centers.last().y, 0.01f)
     }
 
     @Test
-    fun leftDockedMenu_ringsEvenlyWithEndsPulledInward() {
+    fun leftDockedMenu_formsCompactInwardFan() {
         val centers = ArcMenuGeometry.itemCenters(
             dockLeft = true,
             anchorX = 100f,
@@ -81,9 +81,9 @@ class ArcMenuModelTest {
         assertTrue(centers.zipWithNext().all { (first, second) -> first.y < second.y })
         assertEquals(centers[0].x, centers[3].x, 0.01f)
         assertEquals(centers[1].x, centers[2].x, 0.01f)
-        assertEquals(100f + 60f * cos75, centers.first().x, 0.01f)
-        assertEquals(100f - 60f * sin75, centers.first().y, 0.01f)
-        assertEquals(100f + 60f * sin75, centers.last().y, 0.01f)
+        assertEquals(100f + 60f * cos66, centers.first().x, 0.01f)
+        assertEquals(100f - 60f * sin66, centers.first().y, 0.01f)
+        assertEquals(100f + 60f * sin66, centers.last().y, 0.01f)
     }
 
     @Test
@@ -127,10 +127,10 @@ class ArcMenuModelTest {
     }
 
     @Test
-    fun openingMotion_isLongEnoughAndStartsNearTheBall() {
-        assertTrue(ArcMenuDesign.startScale <= 0.5f)
-        assertTrue(ArcMenuDesign.openTotalDuration(itemCount = 4) >= 500L)
-        assertTrue(ArcMenuDesign.closeTotalDuration(itemCount = 4) >= 320L)
+    fun openingMotion_isFastAndStartsNearTheBall() {
+        assertTrue(ArcMenuDesign.startScale in 0.65f..0.75f)
+        assertTrue(ArcMenuDesign.openTotalDuration(itemCount = 4) <= 320L)
+        assertTrue(ArcMenuDesign.closeTotalDuration(itemCount = 4) <= 240L)
     }
 
     @Test
@@ -139,6 +139,11 @@ class ArcMenuModelTest {
         assertEquals(56f, ArcMenuDesign.ballTouchSizeDp, 0f)
         assertEquals(40f, ArcMenuDesign.buttonSizeDp, 0f)
         assertEquals(33f, ArcMenuDesign.dockedVisibleDp(ArcMenuDesign.ballSizeDp), 0f)
+        assertEquals(
+            ArcMenuDesign.ballSizeDp * 0.26f,
+            ArcMenuDesign.idleDockedVisibleDp(ArcMenuDesign.ballSizeDp),
+            0f
+        )
         assertEquals(14f, ArcMenuDesign.feedbackBadgeSizeDp, 0f)
         assertEquals(4f, ArcMenuDesign.ballSizeDp - ArcMenuDesign.buttonSizeDp, 0f)
         assertEquals(12f, ArcMenuDesign.ballTouchSizeDp - ArcMenuDesign.ballSizeDp, 0f)
@@ -152,6 +157,11 @@ class ArcMenuModelTest {
             assertEquals(
                 size.diameterDp * 0.75f,
                 ArcMenuDesign.dockedVisibleDp(size.diameterDp),
+                0f
+            )
+            assertEquals(
+                size.diameterDp * 0.26f,
+                ArcMenuDesign.idleDockedVisibleDp(size.diameterDp),
                 0f
             )
         }
@@ -174,13 +184,13 @@ class ArcMenuModelTest {
         }
 
         assertTrue(ArcMenuDesign.radiusDp <= 58f)
-        // Ends pulled 15° inward: vertical extreme is radius * sin(75°), not the full radius
-        assertEquals(ArcMenuDesign.radiusDp * sin75, centers.maxOf { kotlin.math.abs(it.y) }, 0.01f)
+        // Ends are pulled to 66° so the fan stays compact without button overlap.
+        assertEquals(ArcMenuDesign.radiusDp * sin66, centers.maxOf { kotlin.math.abs(it.y) }, 0.01f)
         assertTrue(nearestDistance >= ArcMenuDesign.buttonSizeDp + 2f)
     }
 
     @Test
-    fun menuPalette_usesDarkSmokedGlassWithWhiteIcons() {
+    fun menuPalette_usesQuietDarkFillWithWhiteIcons() {
         val fill = ArcMenuPalette.fillArgb
         val red = fill ushr 16 and 0xFF
         val green = fill ushr 8 and 0xFF

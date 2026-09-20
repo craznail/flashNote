@@ -10,7 +10,6 @@ import android.os.SystemClock
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
-import android.view.animation.OvershootInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -99,14 +98,7 @@ internal class ArcMenuWindow(
                 }
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    gradientType = GradientDrawable.RADIAL_GRADIENT
-                    colors = intArrayOf(
-                        ArcMenuPalette.highlightArgb,
-                        ArcMenuPalette.fillArgb,
-                        ArcMenuPalette.edgeArgb
-                    )
-                    gradientRadius = buttonSizePx * 0.72f
-                    setGradientCenter(0.42f, 0.36f)
+                    setColor(ArcMenuPalette.fillArgb)
                     setStroke((density).roundToInt().coerceAtLeast(1), ArcMenuPalette.strokeArgb)
                 }
                 val padding = (9 * density).roundToInt()
@@ -115,7 +107,7 @@ internal class ArcMenuWindow(
                 setColorFilter(item.tintColor ?: ArcMenuPalette.iconArgb)
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 contentDescription = context.getString(item.labelRes)
-                elevation = 4 * density
+                elevation = 2 * density
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
@@ -190,7 +182,7 @@ internal class ArcMenuWindow(
                 .translationY(0f)
                 .setDuration(ArcMenuDesign.openDurationMs)
                 .setStartDelay(index * ArcMenuDesign.openStaggerMs)
-                .setInterpolator(OvershootInterpolator(0.85f))
+                .setInterpolator(FastOutSlowInInterpolator())
                 .start()
         }
         scheduleAutoClose(
