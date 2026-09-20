@@ -135,15 +135,24 @@ class OverlayService : Service() {
         if (ballView != null) return
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         ballView = OverlayBallView(this).also { ball ->
-            ball.onSaveImageOnly = {
+            ball.onCapture = {
+                // Unified capture: local-summary behavior follows the user's setting.
                 wantSummary = false
-                wantImageOnly = true
-                triggerCapture()
-            }
-            ball.onSaveImageAndSummary = {
-                wantSummary = true
                 wantImageOnly = false
                 triggerCapture()
+            }
+            ball.onOpenLatestNote = {
+                startActivity(
+                    Intent(this, MainActivity::class.java).apply {
+                        addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        )
+                        putExtra(MainActivity.EXTRA_OPEN_LATEST_NOTE, true)
+                        action = MainActivity.ACTION_OPEN_LATEST_NOTE
+                    }
+                )
             }
             ball.onOpenSettings = {
                 startActivity(

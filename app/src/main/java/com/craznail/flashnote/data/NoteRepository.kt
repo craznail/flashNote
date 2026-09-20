@@ -12,6 +12,8 @@ class NoteRepository(context: Context) {
 
     fun notesDirectory(): File = notesDir
 
+    suspend fun latestNote(): Note? = dao.latest()
+
     suspend fun saveNote(
         imagePath: String,
         ocrText: String? = null,

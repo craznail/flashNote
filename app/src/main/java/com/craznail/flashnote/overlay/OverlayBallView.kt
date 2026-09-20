@@ -44,8 +44,8 @@ class OverlayBallView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : FrameLayout(context, attrs) {
 
-    var onSaveImageOnly: (() -> Unit)? = null
-    var onSaveImageAndSummary: (() -> Unit)? = null
+    var onCapture: (() -> Unit)? = null
+    var onOpenLatestNote: (() -> Unit)? = null
     var onOpenSettings: (() -> Unit)? = null
     var onExit: (() -> Unit)? = null
 
@@ -463,11 +463,11 @@ class OverlayBallView @JvmOverloads constructor(
 
     private fun actionMenuItems(): List<ArcMenuItem> {
         return listOf(
-            ArcMenuItem(R.drawable.ic_menu_image, R.string.action_image_only) {
-                onSaveImageOnly?.invoke()
+            ArcMenuItem(R.drawable.ic_menu_capture, R.string.action_capture) {
+                onCapture?.invoke()
             },
-            ArcMenuItem(R.drawable.ic_menu_summary, R.string.action_image_summary) {
-                onSaveImageAndSummary?.invoke()
+            ArcMenuItem(R.drawable.ic_menu_note_detail, R.string.action_latest_note) {
+                onOpenLatestNote?.invoke()
             },
             ArcMenuItem(R.drawable.ic_menu_settings, R.string.action_settings) {
                 onOpenSettings?.invoke()

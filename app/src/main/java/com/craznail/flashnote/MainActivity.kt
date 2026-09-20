@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
     ) { /* optional */ }
 
     private val openSettingsRequests = MutableStateFlow(0)
+    private val latestNoteToOpen = MutableStateFlow<Note?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
             notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
         consumeOpenSettings(intent)
+        consumeOpenLatestNote(intent)
 
         val app = application as FlashNoteApp
         val overlayPrefs = OverlayPreferences.get(this)
@@ -50,8 +52,16 @@ class MainActivity : ComponentActivity() {
                 var showSettings by remember { mutableStateOf(false) }
                 var selectedNote by remember { mutableStateOf<Note?>(null) }
                 val settingsTick by openSettingsRequests.collectAsState()
+                val requestedLatestNote by latestNoteToOpen.collectAsState()
                 LaunchedEffect(settingsTick) {
                     if (settingsTick > 0) showSettings = true
+                }
+                LaunchedEffect(requestedLatestNote) {
+                    requestedLatestNote?.let { note ->
+                        showSettings = false
+                        selectedNote = note
+                        latestNoteToOpen.value = null
+                    }
                 }
                 // Driven by OverlayService lifecycle — covers chip toggle AND START_OVERLAY intent
                 val overlayRunning by OverlayService.running.collectAsState()
@@ -167,6 +177,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         consumeOpenSettings(intent)
+        consumeOpenLatestNote(intent)
         maybeStartOverlayFromIntent(intent)
     }
 
@@ -178,6 +189,25 @@ class MainActivity : ComponentActivity() {
         intent.putExtra(EXTRA_OPEN_SETTINGS, false)
         if (intent.action == ACTION_OPEN_SETTINGS) intent.action = null
         openSettingsRequests.value = openSettingsRequests.value + 1
+    }
+
+    private fun consumeOpenLatestNote(intent: Intent?) {
+        if (intent == null) return
+        val want = intent.action == ACTION_OPEN_LATEST_NOTE ||
+            intent.getBooleanExtra(EXTRA_OPEN_LATEST_NOTE, false)
+        if (!want) return
+
+        intent.putExtra(EXTRA_OPEN_LATEST_NOTE, false)
+        if (intent.action == ACTION_OPEN_LATEST_NOTE) intent.action = null
+
+        lifecycleScope.launch {
+            val latest = (application as FlashNoteApp).notes.latestNote()
+            if (latest != null) {
+                latestNoteToOpen.value = latest
+            } else {
+                Toast.makeText(this@MainActivity, R.string.no_notes_yet, Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     override fun onResume() {
@@ -207,5 +237,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_START_OVERLAY = "startOverlay"
         const val ACTION_OPEN_SETTINGS = "com.craznail.flashnote.OPEN_SETTINGS"
         const val EXTRA_OPEN_SETTINGS = "openSettings"
+        const val ACTION_OPEN_LATEST_NOTE = "com.craznail.flashnote.OPEN_LATEST_NOTE"
+        const val EXTRA_OPEN_LATEST_NOTE = "openLatestNote"
     }
 }

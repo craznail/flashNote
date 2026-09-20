@@ -75,8 +75,11 @@
     <string name="regenerate_summary">重新生成摘要</string>
     <string name="title_image_only">仅图</string>
 
+    <string name="action_capture">截图</string>
+    <string name="action_latest_note">笔记详情</string>
     <string name="action_settings">设置</string>
     <string name="action_exit">退出</string>
+    <string name="no_notes_yet">暂无笔记</string>
     <string name="cd_menu_image_only">只存图</string>
     <string name="cd_menu_image_summary">存图加摘要</string>
     <string name="cd_menu_settings">打开设置</string>
