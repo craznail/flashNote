@@ -16,6 +16,7 @@ import android.util.AttributeSet
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
@@ -45,6 +46,7 @@ class OverlayBallView @JvmOverloads constructor(
 ) : FrameLayout(context, attrs) {
 
     var onCapture: (() -> Unit)? = null
+    var onCaptureSelectionRequested: ((Int) -> Unit)? = null
     var onOpenLatestNote: (() -> Unit)? = null
     var onOpenSettings: (() -> Unit)? = null
     var onExit: (() -> Unit)? = null
@@ -89,6 +91,8 @@ class OverlayBallView @JvmOverloads constructor(
     private var badgeDockAnimator: ValueAnimator? = null
     private var idleCollapseRunnable: Runnable? = null
     private var pendingMenuOpenRunnable: Runnable? = null
+    private var longPressRunnable: Runnable? = null
+    private var longPressTriggered = false
     private var idleCollapsed = false
     private var downStartedFromIdle = false
 
@@ -225,6 +229,7 @@ class OverlayBallView @JvmOverloads constructor(
         ballContainer.animate().cancel()
         sidePillWindow?.release()
         sidePillWindow = null
+        cancelLongPressDetection()
         windowManager = null
         super.onDetachedFromWindow()
     }
@@ -526,6 +531,8 @@ class OverlayBallView @JvmOverloads constructor(
                 startParamX = lp.x
                 startParamY = lp.y
                 moved = false
+                longPressTriggered = false
+                scheduleLongPressDetection()
                 ballContainer.animate().scaleX(0.92f).scaleY(0.92f).setDuration(80).start()
                 return true
             }
@@ -535,11 +542,12 @@ class OverlayBallView @JvmOverloads constructor(
                 if (abs(dx) > touchSlop || abs(dy) > touchSlop) {
                     pendingMenuOpenRunnable?.let { handler.removeCallbacks(it) }
                     pendingMenuOpenRunnable = null
+                    cancelLongPressDetection()
                     // Close the independent menu before moving.
                     if (!moved && menuState.isOpen) hideActionMenu(animate = false)
                     moved = true
                 }
-                if (moved) {
+                if (moved && !longPressTriggered) {
                     val gravityAdjustedDx = if (dockedLeft) dx else -dx
                     lp.x = (startParamX + gravityAdjustedDx).toInt()
                     lp.y = (startParamY + dy).toInt()
@@ -548,6 +556,7 @@ class OverlayBallView @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                cancelLongPressDetection()
                 ballContainer.animate()
                     .scaleX(1f).scaleY(1f)
                     .setDuration(180)
@@ -555,6 +564,10 @@ class OverlayBallView @JvmOverloads constructor(
                     .start()
 
                 when {
+                    longPressTriggered -> {
+                        longPressTriggered = false
+                        downStartedFromIdle = false
+                    }
                     !moved && event.actionMasked == MotionEvent.ACTION_UP -> {
                         when {
                             badgeModel.visual == FeedbackBadgeVisual.FAILURE && !menuState.isOpen -> showFailReason()
@@ -577,6 +590,29 @@ class OverlayBallView @JvmOverloads constructor(
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun scheduleLongPressDetection() {
+        cancelLongPressDetection()
+        val runnable = Runnable {
+            if (moved || longPressTriggered) return@Runnable
+            longPressTriggered = true
+            hideActionMenu(animate = false)
+            cancelIdleCollapse()
+            ballContainer.animate().cancel()
+            ballContainer.scaleX = 1f
+            ballContainer.scaleY = 1f
+            val location = IntArray(2)
+            ballContainer.getLocationOnScreen(location)
+            onCaptureSelectionRequested?.invoke(location[1] + ballSizePx / 2)
+        }
+        longPressRunnable = runnable
+        handler.postDelayed(runnable, ViewConfiguration.getLongPressTimeout().toLong())
+    }
+
+    private fun cancelLongPressDetection() {
+        longPressRunnable?.let { handler.removeCallbacks(it) }
+        longPressRunnable = null
     }
 
     private fun snapToEdge(wm: WindowManager, lp: WindowManager.LayoutParams) {

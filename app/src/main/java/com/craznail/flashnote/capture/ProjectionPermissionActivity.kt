@@ -20,15 +20,19 @@ class ProjectionPermissionActivity : Activity() {
 
     private var withSummary = false
     private var imageOnly = false
+    private var selectionTop: Int? = null
+    private var selectionBottom: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         withSummary = intent.getBooleanExtra(EXTRA_WITH_SUMMARY, false)
         imageOnly = intent.getBooleanExtra(EXTRA_IMAGE_ONLY, false)
+        selectionTop = intent.getIntExtra(EXTRA_SELECTION_TOP, -1).takeIf { it >= 0 }
+        selectionBottom = intent.getIntExtra(EXTRA_SELECTION_BOTTOM, -1).takeIf { it >= 0 }
 
         if (CaptureService.hasActiveProjection()) {
             Log.i(TAG, "reuse active MediaProjection — skip consent UI")
-            CaptureService.startCapture(this, withSummary, imageOnly)
+            CaptureService.startCapture(this, withSummary, imageOnly, selectionTop, selectionBottom)
             finish()
             return
         }
@@ -52,7 +56,15 @@ class ProjectionPermissionActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQ) {
             if (resultCode == RESULT_OK && data != null) {
-                CaptureService.startWithProjection(this, resultCode, data, withSummary, imageOnly)
+                CaptureService.startWithProjection(
+                    this,
+                    resultCode,
+                    data,
+                    withSummary,
+                    imageOnly,
+                    selectionTop,
+                    selectionBottom
+                )
             } else {
                 OverlayService.notifyUnauthorized(this)
             }
@@ -65,15 +77,23 @@ class ProjectionPermissionActivity : Activity() {
         private const val REQ = 9001
         const val EXTRA_WITH_SUMMARY = "withSummary"
         const val EXTRA_IMAGE_ONLY = "imageOnly"
+        const val EXTRA_SELECTION_TOP = "selectionTop"
+        const val EXTRA_SELECTION_BOTTOM = "selectionBottom"
 
         fun intent(
             context: Context,
             withSummary: Boolean = false,
-            imageOnly: Boolean = false
+            imageOnly: Boolean = false,
+            selectionTop: Int? = null,
+            selectionBottom: Int? = null
         ) =
             Intent(context, ProjectionPermissionActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(EXTRA_WITH_SUMMARY, withSummary)
                 .putExtra(EXTRA_IMAGE_ONLY, imageOnly)
+                .apply {
+                    selectionTop?.let { putExtra(EXTRA_SELECTION_TOP, it) }
+                    selectionBottom?.let { putExtra(EXTRA_SELECTION_BOTTOM, it) }
+                }
     }
 }

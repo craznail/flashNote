@@ -65,6 +65,8 @@ class CaptureService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var withSummary = false
     private var imageOnly = false
+    private var selectionTop: Int? = null
+    private var selectionBottom: Int? = null
     private var screenWidth = 0
     private var screenHeight = 0
     private var screenDensity = 0
@@ -76,6 +78,8 @@ class CaptureService : Service() {
             ACTION_START_WITH_PROJECTION -> {
                 withSummary = intent.getBooleanExtra(EXTRA_WITH_SUMMARY, false)
                 imageOnly = intent.getBooleanExtra(EXTRA_IMAGE_ONLY, false)
+                selectionTop = intent.getIntExtra(EXTRA_SELECTION_TOP, -1).takeIf { it >= 0 }
+                selectionBottom = intent.getIntExtra(EXTRA_SELECTION_BOTTOM, -1).takeIf { it >= 0 }
                 val code = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
                 @Suppress("DEPRECATION")
                 val data = if (Build.VERSION.SDK_INT >= 33) {
@@ -97,6 +101,8 @@ class CaptureService : Service() {
             ACTION_CAPTURE -> {
                 withSummary = intent.getBooleanExtra(EXTRA_WITH_SUMMARY, false)
                 imageOnly = intent.getBooleanExtra(EXTRA_IMAGE_ONLY, false)
+                selectionTop = intent.getIntExtra(EXTRA_SELECTION_TOP, -1).takeIf { it >= 0 }
+                selectionBottom = intent.getIntExtra(EXTRA_SELECTION_BOTTOM, -1).takeIf { it >= 0 }
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
                     startAsForeground()
                     ensureVirtualDisplay()
@@ -238,7 +244,7 @@ class CaptureService : Service() {
                             OverlayService.setCaptureHidden(false)
                             val bitmap = result.getOrNull()
                             if (bitmap != null) {
-                                processCapturedBitmap(cropSystemStatusBar(bitmap))
+                                processCapturedBitmap(prepareCapturedBitmap(bitmap))
                             } else {
                                 val error = result.exceptionOrNull()
                                 val reason = if (
@@ -293,7 +299,13 @@ class CaptureService : Service() {
         val mp = projection ?: activeProjection
         if (mp == null) {
             startActivity(
-                ProjectionPermissionActivity.intent(this, withSummary, imageOnly)
+                ProjectionPermissionActivity.intent(
+                    this,
+                    withSummary,
+                    imageOnly,
+                    selectionTop,
+                    selectionBottom
+                )
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
             return
@@ -309,7 +321,7 @@ class CaptureService : Service() {
                 OverlayService.setCaptureHidden(false)
 
                 if (bitmap != null) {
-                    processCapturedBitmap(bitmap)
+                    processCapturedBitmap(prepareCapturedBitmap(bitmap))
                 } else {
                     OverlayService.notifyUnauthorized(
                         this@CaptureService,
@@ -421,7 +433,7 @@ class CaptureService : Service() {
                 }
             }
         }
-        return bitmap?.let(::cropSystemStatusBar)
+        return bitmap
     }
 
     private fun statusBarInsetPx(): Int {
@@ -438,6 +450,30 @@ class CaptureService : Service() {
         @Suppress("DiscouragedApi")
         val resourceId = resources.getIdentifier("status_bar_height", "dimen", "android")
         return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
+    }
+
+    private fun prepareCapturedBitmap(bitmap: Bitmap): Bitmap {
+        val requestedTop = selectionTop
+        val requestedBottom = selectionBottom
+        if (requestedTop != null && requestedBottom != null && requestedBottom > requestedTop) {
+            val top = requestedTop.coerceIn(0, bitmap.height - 1)
+            val bottom = requestedBottom.coerceIn(top + 1, bitmap.height)
+            val cropped = Bitmap.createBitmap(
+                bitmap,
+                0,
+                top,
+                bitmap.width,
+                bottom - top
+            )
+            if (cropped != bitmap) bitmap.recycle()
+            Log.d(
+                TAG,
+                "Cropped selection: top=" + top + " bottom=" + bottom +
+                    " output=" + cropped.width + "x" + cropped.height
+            )
+            return cropped
+        }
+        return cropSystemStatusBar(bitmap)
     }
 
     private fun cropSystemStatusBar(bitmap: Bitmap): Bitmap {
@@ -516,6 +552,8 @@ class CaptureService : Service() {
         const val EXTRA_RESULT_DATA = "resultData"
         const val EXTRA_WITH_SUMMARY = "withSummary"
         const val EXTRA_IMAGE_ONLY = "imageOnly"
+        const val EXTRA_SELECTION_TOP = "selectionTop"
+        const val EXTRA_SELECTION_BOTTOM = "selectionBottom"
         private const val NOTIF_ID = 1002
 
         @Volatile
@@ -534,7 +572,9 @@ class CaptureService : Service() {
             resultCode: Int,
             data: Intent,
             withSummary: Boolean = false,
-            imageOnly: Boolean = false
+            imageOnly: Boolean = false,
+            selectionTop: Int? = null,
+            selectionBottom: Int? = null
         ) {
             val i = Intent(context, CaptureService::class.java).apply {
                 action = ACTION_START_WITH_PROJECTION
@@ -542,6 +582,8 @@ class CaptureService : Service() {
                 putExtra(EXTRA_RESULT_DATA, data)
                 putExtra(EXTRA_WITH_SUMMARY, withSummary)
                 putExtra(EXTRA_IMAGE_ONLY, imageOnly)
+                selectionTop?.let { putExtra(EXTRA_SELECTION_TOP, it) }
+                selectionBottom?.let { putExtra(EXTRA_SELECTION_BOTTOM, it) }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(i)
@@ -553,12 +595,16 @@ class CaptureService : Service() {
         fun startCapture(
             context: Context,
             withSummary: Boolean = false,
-            imageOnly: Boolean = false
+            imageOnly: Boolean = false,
+            selectionTop: Int? = null,
+            selectionBottom: Int? = null
         ) {
             val i = Intent(context, CaptureService::class.java).apply {
                 action = ACTION_CAPTURE
                 putExtra(EXTRA_WITH_SUMMARY, withSummary)
                 putExtra(EXTRA_IMAGE_ONLY, imageOnly)
+                selectionTop?.let { putExtra(EXTRA_SELECTION_TOP, it) }
+                selectionBottom?.let { putExtra(EXTRA_SELECTION_BOTTOM, it) }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 // OverlayService is already foreground; Accessibility capture needs no

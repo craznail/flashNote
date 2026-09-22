@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
+import android.view.View
 import android.view.WindowManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +34,7 @@ class OverlayService : Service() {
 
     private var ballView: OverlayBallView? = null
     private var windowManager: WindowManager? = null
+    private var selectionWindow: CaptureSelectionWindow? = null
 
     /** When true, next capture requests local summary (prefs may also enable). */
     @Volatile private var wantSummary = false
@@ -143,6 +145,9 @@ class OverlayService : Service() {
                 wantImageOnly = false
                 triggerCapture()
             }
+            ball.onCaptureSelectionRequested = { centerY ->
+                showCaptureSelection(centerY)
+            }
             ball.onOpenLatestNote = {
                 startActivity(
                     Intent(this, MainActivity::class.java).apply {
@@ -177,13 +182,54 @@ class OverlayService : Service() {
         }
     }
 
-    private fun triggerCapture() {
+    private fun showCaptureSelection(centerY: Int) {
+        if (selectionWindow != null) return
+        val wm = windowManager ?: return
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+        ballView?.setCaptureHidden(true)
+        selectionWindow = CaptureSelectionWindow(
+            context = this,
+            windowManager = wm,
+            overlayType = type,
+            initialCenterY = centerY,
+            onConfirm = { bounds ->
+                closeCaptureSelection()
+                wantSummary = false
+                wantImageOnly = false
+                triggerCapture(bounds.top, bounds.bottom)
+            },
+            onCancel = { closeCaptureSelection() }
+        ).also { it.show() }
+    }
+
+    private fun closeCaptureSelection() {
+        selectionWindow?.close()
+        selectionWindow = null
+        ballView?.setCaptureHidden(false)
+    }
+
+    private fun setCaptureUiHidden(hidden: Boolean) {
+        selectionWindow?.setHidden(hidden)
+        ballView?.setCaptureHidden(hidden)
+        if (!hidden && selectionWindow != null) {
+            ballView?.visibility = View.INVISIBLE
+        }
+    }
+
+    private fun triggerCapture(selectionTop: Int? = null, selectionBottom: Int? = null) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (FlashNoteAccessibilityService.isConnected()) {
                 CaptureService.startCapture(
                     this,
                     withSummary = wantSummary,
-                    imageOnly = wantImageOnly
+                    imageOnly = wantImageOnly,
+                    selectionTop = selectionTop,
+                    selectionBottom = selectionBottom
                 )
             } else {
                 ballView?.showSystemTip(
@@ -204,7 +250,9 @@ class OverlayService : Service() {
             CaptureService.startCapture(
                 this,
                 withSummary = wantSummary,
-                imageOnly = wantImageOnly
+                imageOnly = wantImageOnly,
+                selectionTop = selectionTop,
+                selectionBottom = selectionBottom
             )
         } else {
             startActivity(
@@ -212,6 +260,8 @@ class OverlayService : Service() {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     putExtra(ProjectionPermissionActivity.EXTRA_WITH_SUMMARY, wantSummary)
                     putExtra(ProjectionPermissionActivity.EXTRA_IMAGE_ONLY, wantImageOnly)
+                    selectionTop?.let { putExtra(ProjectionPermissionActivity.EXTRA_SELECTION_TOP, it) }
+                    selectionBottom?.let { putExtra(ProjectionPermissionActivity.EXTRA_SELECTION_BOTTOM, it) }
                 }
             )
         }
@@ -219,6 +269,8 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         if (instance === this) instance = null
+        selectionWindow?.close()
+        selectionWindow = null
         CaptureService.stop(this)
         ballView?.let { v -> runCatching { windowManager?.removeView(v) } }
         ballView = null
@@ -268,7 +320,7 @@ class OverlayService : Service() {
         }
 
         fun setCaptureHidden(hidden: Boolean) {
-            instance?.ballView?.setCaptureHidden(hidden)
+            instance?.setCaptureUiHidden(hidden)
         }
 
         fun notifySaved(
