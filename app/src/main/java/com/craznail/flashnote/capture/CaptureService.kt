@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import com.craznail.flashnote.overlay.CropRegionStore
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.Image
@@ -207,7 +208,12 @@ class CaptureService : Service() {
 
         scope.launch {
             try {
-                // Hide floating ball (+ arc menu) so it is not in the screenshot
+                // Ensure a crop rect exists (default 60%×40%) even if user never dragged.
+                if (screenWidth > 0 && screenHeight > 0) {
+                    CropRegionStore.load(this@CaptureService)
+                    CropRegionStore.getOrDefault(screenWidth, screenHeight)
+                }
+                // Hide floating ball + arc menu + selection frame so nothing is in the shot
                 withContext(Dispatchers.Main) {
                     suspendCancellableCoroutine { cont ->
                         OverlayService.hideForCapture {
@@ -215,10 +221,13 @@ class CaptureService : Service() {
                         }
                     }
                 }
-                val bitmap = try {
+                val fullBitmap = try {
                     withContext(Dispatchers.IO) { grabBitmapFromReader() }
                 } finally {
                     OverlayService.showAfterCapture()
+                }
+                val bitmap = fullBitmap?.let { full ->
+                    withContext(Dispatchers.IO) { cropToSelection(full) }
                 }
                 if (bitmap != null) {
                     val path = withContext(Dispatchers.IO) { savePng(bitmap) }
@@ -341,6 +350,29 @@ class CaptureService : Service() {
         bmp.copyPixelsFromBuffer(buffer)
         return if (bmp.width == width) bmp else Bitmap.createBitmap(bmp, 0, 0, width, height).also {
             if (it != bmp) bmp.recycle()
+        }
+    }
+
+    /**
+     * Crop the full-screen grab to the user selection (or default 60%×40%).
+     * Recycles [full] when a new cropped bitmap is returned.
+     */
+    private fun cropToSelection(full: Bitmap): Bitmap {
+        val crop = CropRegionStore.cropForBitmap(
+            full.width, full.height, screenWidth, screenHeight
+        )
+        if (crop.left == 0 && crop.top == 0 &&
+            crop.width() == full.width && crop.height() == full.height
+        ) {
+            return full
+        }
+        return try {
+            Bitmap.createBitmap(full, crop.left, crop.top, crop.width(), crop.height()).also {
+                if (it != full) full.recycle()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "crop failed, using full frame", e)
+            full
         }
     }
 

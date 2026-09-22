@@ -48,6 +48,15 @@ class OverlayBallView @JvmOverloads constructor(
     var onOpenSettings: (() -> Unit)? = null
     var onExit: (() -> Unit)? = null
 
+    /** Drag phases for crop-region handle: START on first move past slop, MOVE, END on up/cancel after drag. */
+    enum class DragPhase { START, MOVE, END }
+
+    /**
+     * Notifies when the ball is dragged so the crop frame can follow.
+     * Coordinates are screen-space ball center (px).
+     */
+    var onBallDrag: ((ballCenterX: Int, ballCenterY: Int, phase: DragPhase) -> Unit)? = null
+
     private val density = resources.displayMetrics.density
     private val ballSizePx = (40 * density).roundToInt()
     private val visibleWhenDockedPx = (29 * density).roundToInt() // mid of 28–30
@@ -87,6 +96,7 @@ class OverlayBallView @JvmOverloads constructor(
     private var startParamX = 0
     private var startParamY = 0
     private var moved = false
+    private var dragStarted = false
     private var menuVisible = false
     private val handler = Handler(Looper.getMainLooper())
     private var hideToastRunnable: Runnable? = null
@@ -752,6 +762,16 @@ class OverlayBallView @JvmOverloads constructor(
         menuCollapsing = false
     }
 
+    private fun ballCenterScreen(): Pair<Int, Int> {
+        val (left, top) = ballScreenLeftTop()
+        return left + ballSizePx / 2 to top + ballSizePx / 2
+    }
+
+    private fun emitDrag(phase: DragPhase) {
+        val (cx, cy) = ballCenterScreen()
+        onBallDrag?.invoke(cx, cy, phase)
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val lp = windowParams ?: return super.onTouchEvent(event)
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -766,6 +786,7 @@ class OverlayBallView @JvmOverloads constructor(
                 startParamX = lp.x
                 startParamY = lp.y
                 moved = false
+                dragStarted = false
                 ballContainer.animate().scaleX(0.92f).scaleY(0.92f).setDuration(80).start()
                 return true
             }
@@ -790,6 +811,12 @@ class OverlayBallView @JvmOverloads constructor(
                     lp.x = (startParamX + dx).toInt()
                     lp.y = (startParamY + dy).toInt()
                     wm.updateViewLayout(this, lp)
+                    if (!dragStarted) {
+                        dragStarted = true
+                        emitDrag(DragPhase.START)
+                    } else {
+                        emitDrag(DragPhase.MOVE)
+                    }
                 }
                 return true
             }
@@ -809,7 +836,10 @@ class OverlayBallView @JvmOverloads constructor(
                             else -> showActionMenu()
                         }
                     }
-                    moved -> snapToEdge(wm, lp)
+                    moved -> {
+                        if (dragStarted) emitDrag(DragPhase.END)
+                        snapToEdge(wm, lp)
+                    }
                 }
                 return true
             }
@@ -837,6 +867,8 @@ class OverlayBallView @JvmOverloads constructor(
                 lp.x = (startXAnim + (targetX - startXAnim) * t).toInt()
                 lp.y = (startYAnim + (targetY - startYAnim) * t).toInt()
                 runCatching { wm.updateViewLayout(this@OverlayBallView, lp) }
+                // Keep crop frame aligned while ball snaps to edge
+                if (dragStarted) emitDrag(DragPhase.MOVE)
             }
             start()
         }

@@ -29,7 +29,13 @@ import com.craznail.flashnote.capture.ProjectionPermissionActivity
 class OverlayService : Service() {
 
     private var ballView: OverlayBallView? = null
+    private var cropOverlay: CropSelectionOverlayView? = null
     private var windowManager: WindowManager? = null
+    /** Offset from ball center to crop-rect center while dragging (screen px). */
+    private var dragOffsetX = 0
+    private var dragOffsetY = 0
+    private var screenW = 0
+    private var screenH = 0
 
     /** When true, next capture requests local summary (prefs may also enable). */
     @Volatile private var wantSummary = false
@@ -133,6 +139,13 @@ class OverlayService : Service() {
     private fun showBall() {
         if (ballView != null) return
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val wm = windowManager!!
+        refreshScreenSize()
+        CropRegionStore.load(this)
+
+        // Selection overlay first so the ball stays above it in z-order.
+        cropOverlay = CropSelectionOverlayView(this).also { it.attach(wm) }
+
         ballView = OverlayBallView(this).also { ball ->
             ball.onSaveImageOnly = {
                 wantSummary = false
@@ -161,7 +174,63 @@ class OverlayService : Service() {
                 CaptureService.stop(this)
                 stopSelf()
             }
-            ball.attach(windowManager!!)
+            ball.onBallDrag = { cx, cy, phase -> onBallDrag(cx, cy, phase) }
+            ball.attach(wm)
+        }
+    }
+
+    private fun refreshScreenSize() {
+        val wm = windowManager ?: return
+        val metrics = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getRealMetrics(metrics)
+        screenW = metrics.widthPixels
+        screenH = metrics.heightPixels
+    }
+
+    private fun onBallDrag(ballCx: Int, ballCy: Int, phase: OverlayBallView.DragPhase) {
+        refreshScreenSize()
+        val w = screenW
+        val h = screenH
+        if (w <= 0 || h <= 0) return
+        when (phase) {
+            OverlayBallView.DragPhase.START -> {
+                val existing = CropRegionStore.getRectOrNull()
+                val rect = if (existing != null) {
+                    CropRegionStore.clamp(existing, w, h)
+                } else {
+                    // Place default 60%×40% with ball on the near vertical edge (handle).
+                    val rw = (w * 0.60f).toInt().coerceAtLeast(1)
+                    val rh = (h * 0.40f).toInt().coerceAtLeast(1)
+                    val onLeft = ballCx < w / 2
+                    val top = (ballCy - rh / 2).coerceIn(0, (h - rh).coerceAtLeast(0))
+                    val left = if (onLeft) {
+                        ballCx.coerceIn(0, (w - rw).coerceAtLeast(0))
+                    } else {
+                        (ballCx - rw).coerceIn(0, (w - rw).coerceAtLeast(0))
+                    }
+                    android.graphics.Rect(left, top, left + rw, top + rh)
+                }
+                CropRegionStore.setRect(rect, w, h)
+                dragOffsetX = rect.centerX() - ballCx
+                dragOffsetY = rect.centerY() - ballCy
+                cropOverlay?.showSelection(CropRegionStore.getOrDefault(w, h, ballCx, ballCy))
+            }
+            OverlayBallView.DragPhase.MOVE, OverlayBallView.DragPhase.END -> {
+                val cur = CropRegionStore.getOrDefault(w, h, ballCx, ballCy)
+                val rw = cur.width()
+                val rh = cur.height()
+                val cx = ballCx + dragOffsetX
+                val cy = ballCy + dragOffsetY
+                val left = (cx - rw / 2).coerceIn(0, (w - rw).coerceAtLeast(0))
+                val top = (cy - rh / 2).coerceIn(0, (h - rh).coerceAtLeast(0))
+                val next = android.graphics.Rect(left, top, left + rw, top + rh)
+                CropRegionStore.setRect(next, w, h)
+                cropOverlay?.updateSelection(next)
+                if (phase == OverlayBallView.DragPhase.END) {
+                    CropRegionStore.persist(this)
+                }
+            }
         }
     }
 
@@ -189,6 +258,8 @@ class OverlayService : Service() {
         CaptureService.stop(this)
         ballView?.let { v -> runCatching { windowManager?.removeView(v) } }
         ballView = null
+        cropOverlay?.let { v -> windowManager?.let { wm -> v.detach(wm) } }
+        cropOverlay = null
         windowManager = null
         setRunning(false)
         super.onDestroy()
@@ -221,10 +292,14 @@ class OverlayService : Service() {
             val svc = instance
             val ball = svc?.ballView
             if (ball == null) {
-                onHidden()
+                mainHandler.post {
+                    svc?.cropOverlay?.hideForCapture()
+                    onHidden()
+                }
                 return
             }
             mainHandler.post {
+                svc.cropOverlay?.hideForCapture()
                 ball.hideForCapture()
                 mainHandler.postDelayed({ onHidden() }, 60L)
             }
@@ -233,6 +308,7 @@ class OverlayService : Service() {
         fun showAfterCapture() {
             mainHandler.post {
                 instance?.ballView?.showAfterCapture()
+                instance?.cropOverlay?.showAfterCapture()
             }
         }
 
