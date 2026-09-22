@@ -2,7 +2,6 @@ package com.craznail.flashnote.overlay
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
@@ -16,8 +15,13 @@ import android.view.WindowManager
 import kotlin.math.roundToInt
 
 /**
- * Fullscreen TYPE_APPLICATION_OVERLAY: dimmed outside + clear crop hole + high-contrast stroke.
+ * Fullscreen TYPE_APPLICATION_OVERLAY: dimmed outside + clear crop hole + UI-locked stroke.
  * Uses FLAG_NOT_TOUCHABLE so it does not block underlying interaction.
+ *
+ * UI lock:
+ * - Outside mask #000000 α0.45 → 0x73000000
+ * - Stroke #3B82F6 2.5dp + white 1dp α0.7
+ * - Corner L 12dp decorative, same blue
  */
 class CropSelectionOverlayView @JvmOverloads constructor(
     context: Context,
@@ -25,20 +29,42 @@ class CropSelectionOverlayView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     private val density = resources.displayMetrics.density
+
     private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0x66000000 // ~40% black
+        color = 0x73000000 // #000000 α0.45
         style = Paint.Style.FILL
     }
-    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+
+    /** Primary selection stroke: #3B82F6 @ 2.5dp */
+    private val strokeBluePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = (2.5f * density).coerceAtLeast(2f)
-        color = Color.WHITE
+        color = PRIMARY_BLUE
+        strokeCap = Paint.Cap.SQUARE
+        strokeJoin = Paint.Join.MITER
     }
-    private val strokeOuterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+
+    /**
+     * White contrast ring α0.7 @ 1dp visible outside the blue stroke
+     * (stroke centered on edge → total width = 2.5 + 2×1 = 4.5dp).
+     */
+    private val strokeWhitePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = (4.5f * density).coerceAtLeast(3f)
-        color = 0xE6000000.toInt()
+        strokeWidth = ((2.5f + 2f * 1f) * density).coerceAtLeast(3f)
+        color = 0xB3FFFFFF.toInt() // white α0.7
+        strokeCap = Paint.Cap.SQUARE
+        strokeJoin = Paint.Join.MITER
     }
+
+    /** Decorative corner L ticks — same blue, 12dp arms. */
+    private val cornerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = (2.5f * density).coerceAtLeast(2f)
+        color = PRIMARY_BLUE
+        strokeCap = Paint.Cap.SQUARE
+        strokeJoin = Paint.Join.MITER
+    }
+
     private val holePath = Path()
     private val selection = Rect()
     private var windowParams: WindowManager.LayoutParams? = null
@@ -128,23 +154,26 @@ class CropSelectionOverlayView @JvmOverloads constructor(
         holePath.addRect(0f, 0f, w, h, Path.Direction.CW)
         holePath.addRect(RectF(selection), Path.Direction.CCW)
         canvas.drawPath(holePath, dimPaint)
-        // Dark outer stroke then bright inner for contrast on any background
-        canvas.drawRect(selection, strokeOuterPaint)
-        canvas.drawRect(selection, strokePaint)
-        // Corner ticks for readability
+        // White α0.7 outer contrast, then blue 2.5dp primary
+        canvas.drawRect(selection, strokeWhitePaint)
+        canvas.drawRect(selection, strokeBluePaint)
+        // Decorative corner L ticks (12dp), same blue
         val tick = (12 * density).roundToInt()
         val l = selection.left.toFloat()
         val t = selection.top.toFloat()
         val r = selection.right.toFloat()
         val b = selection.bottom.toFloat()
-        val tickPaint = strokePaint
-        canvas.drawLine(l, t, l + tick, t, tickPaint)
-        canvas.drawLine(l, t, l, t + tick, tickPaint)
-        canvas.drawLine(r, t, r - tick, t, tickPaint)
-        canvas.drawLine(r, t, r, t + tick, tickPaint)
-        canvas.drawLine(l, b, l + tick, b, tickPaint)
-        canvas.drawLine(l, b, l, b - tick, tickPaint)
-        canvas.drawLine(r, b, r - tick, b, tickPaint)
-        canvas.drawLine(r, b, r, b - tick, tickPaint)
+        canvas.drawLine(l, t, l + tick, t, cornerPaint)
+        canvas.drawLine(l, t, l, t + tick, cornerPaint)
+        canvas.drawLine(r, t, r - tick, t, cornerPaint)
+        canvas.drawLine(r, t, r, t + tick, cornerPaint)
+        canvas.drawLine(l, b, l + tick, b, cornerPaint)
+        canvas.drawLine(l, b, l, b - tick, cornerPaint)
+        canvas.drawLine(r, b, r - tick, b, cornerPaint)
+        canvas.drawLine(r, b, r, b - tick, cornerPaint)
+    }
+
+    companion object {
+        const val PRIMARY_BLUE = 0xFF3B82F6.toInt()
     }
 }

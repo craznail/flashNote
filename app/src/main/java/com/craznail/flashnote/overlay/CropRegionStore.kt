@@ -1,13 +1,17 @@
 package com.craznail.flashnote.overlay
 
 import android.content.Context
+import android.content.res.Resources
 import android.graphics.Rect
 import android.util.DisplayMetrics
 import android.view.WindowManager
+import kotlin.math.roundToInt
 
 /**
  * In-memory + SharedPreferences crop selection in **screen pixels**
  * (left, top, right, bottom). Used by the selection overlay and CaptureService.
+ *
+ * Edge clamp keeps an **8dp** margin from screen edges (UI lock).
  */
 object CropRegionStore {
 
@@ -16,6 +20,7 @@ object CropRegionStore {
     private const val KEY_T = "crop_t"
     private const val KEY_R = "crop_r"
     private const val KEY_B = "crop_b"
+    private const val EDGE_MARGIN_DP = 8
 
     @Volatile
     private var rect: Rect? = null
@@ -24,7 +29,8 @@ object CropRegionStore {
 
     /**
      * Returns the active crop, or a default 60%×40% region biased toward [ballCenterX]/
-     * [ballCenterY] (or screen center if null). Always clamped to [screenW]×[screenH].
+     * [ballCenterY] (or screen center if null). Always clamped to [screenW]×[screenH]
+     * with an 8dp edge margin.
      */
     fun getOrDefault(
         screenW: Int,
@@ -84,8 +90,11 @@ object CropRegionStore {
         ballCenterX: Int? = null,
         ballCenterY: Int? = null
     ): Rect {
-        val w = (screenW * 0.60f).toInt().coerceAtLeast(1)
-        val h = (screenH * 0.40f).toInt().coerceAtLeast(1)
+        val m = edgeMarginPx()
+        val availW = (screenW - 2 * m).coerceAtLeast(1)
+        val availH = (screenH - 2 * m).coerceAtLeast(1)
+        val w = (screenW * 0.60f).toInt().coerceIn(1, availW)
+        val h = (screenH * 0.40f).toInt().coerceIn(1, availH)
         val bx = ballCenterX ?: (screenW / 2)
         val by = ballCenterY ?: (screenH / 2)
         // Bias horizontal center toward the ball's side (~35% / ~65%).
@@ -95,21 +104,31 @@ object CropRegionStore {
             (screenW * 0.65f).toInt()
         }
         val preferCy = by
-        val left = (preferCx - w / 2).coerceIn(0, (screenW - w).coerceAtLeast(0))
-        val top = (preferCy - h / 2).coerceIn(0, (screenH - h).coerceAtLeast(0))
-        return Rect(left, top, left + w, top + h)
+        val left = (preferCx - w / 2).coerceIn(m, (screenW - m - w).coerceAtLeast(m))
+        val top = (preferCy - h / 2).coerceIn(m, (screenH - m - h).coerceAtLeast(m))
+        return clamp(Rect(left, top, left + w, top + h), screenW, screenH)
     }
 
+    /**
+     * Clamp [r] inside the screen with an **8dp** inset from every edge.
+     * Width/height are shrunk if needed so the rect still fits.
+     */
     fun clamp(r: Rect, screenW: Int, screenH: Int): Rect {
         if (screenW <= 0 || screenH <= 0) return r
-        var w = r.width().coerceIn(1, screenW)
-        var h = r.height().coerceIn(1, screenH)
+        val m = edgeMarginPx()
+        val availW = (screenW - 2 * m).coerceAtLeast(1)
+        val availH = (screenH - 2 * m).coerceAtLeast(1)
+        val w = r.width().coerceIn(1, availW)
+        val h = r.height().coerceIn(1, availH)
         var left = r.left
         var top = r.top
+        if (left < m) left = m
+        if (top < m) top = m
+        if (left + w > screenW - m) left = screenW - m - w
+        if (top + h > screenH - m) top = screenH - m - h
+        // If screen is smaller than 2*margin, fall back to a non-negative fit.
         if (left < 0) left = 0
         if (top < 0) top = 0
-        if (left + w > screenW) left = screenW - w
-        if (top + h > screenH) top = screenH - h
         return Rect(left, top, left + w, top + h)
     }
 
@@ -127,6 +146,9 @@ object CropRegionStore {
         val bottom = (src.bottom * sy).toInt().coerceIn(top + 1, bitmapH)
         return Rect(left, top, right, bottom)
     }
+
+    private fun edgeMarginPx(): Int =
+        (EDGE_MARGIN_DP * Resources.getSystem().displayMetrics.density).roundToInt()
 
     private fun screenSize(context: Context): Pair<Int, Int> {
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
