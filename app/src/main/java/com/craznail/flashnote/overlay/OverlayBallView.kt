@@ -685,6 +685,10 @@ class OverlayBallView @JvmOverloads constructor(
         if (idleCollapsed || !canCollapseIdle()) return
         idleCollapsed = true
 
+        // Idle keeps the same ball silhouette and center mark, but switches to the
+        // high-blue side artwork so the small edge sliver remains visually obvious.
+        iconView.setImageResource(R.drawable.ic_ball_idle)
+
         val idleVisiblePx =
             (ArcMenuDesign.idleDockedVisibleDp(currentBallSize.diameterDp) * density).roundToInt()
         val shift = (visibleWhenDockedPx - idleVisiblePx).coerceAtLeast(0).toFloat()
@@ -708,6 +712,7 @@ class OverlayBallView @JvmOverloads constructor(
             ballContainer.alpha != 1f ||
             ballContainer.scaleX != 1f
         idleCollapsed = false
+        iconView.setImageResource(R.drawable.ic_ball_normal)
         if (!needsExpansion) return
 
         ballContainer.animate().cancel()
