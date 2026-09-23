@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
-import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Handler
@@ -16,6 +15,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.PathInterpolator
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import androidx.core.content.ContextCompat
@@ -37,14 +37,14 @@ internal data class CaptureSelectionBounds(
  * Modal full-screen overlay used by screenshot selection mode.
  *
  * The selection always spans the full display width. Users can move the whole selection
- * vertically by dragging inside it or by dragging the screenshot control, and can fine tune
- * the top/bottom edges with matching blue/white handles.
+ * vertically by dragging inside it and can fine tune the top/bottom edges with matching
+ * blue/white handles.
  */
 internal class CaptureSelectionWindow(
     context: Context,
     private val windowManager: WindowManager,
     overlayType: Int,
-    private val initialCenterY: Int,
+    private val initialAnchor: CaptureSelectionAnchor,
     private val onConfirm: (CaptureSelectionBounds) -> Unit,
     private val onCancel: () -> Unit
 ) {
@@ -81,12 +81,35 @@ internal class CaptureSelectionWindow(
         if (attached) return
         windowManager.addView(root, params)
         attached = true
-        root.configureInitialCenter(initialCenterY)
+        root.configureInitialAnchor(initialAnchor)
         root.isFocusableInTouchMode = true
         root.requestFocus()
     }
 
-    fun close() {
+    fun close(animated: Boolean = true, onClosed: () -> Unit = {}) {
+        if (!attached) {
+            onClosed()
+            return
+        }
+        root.isEnabled = false
+        root.animate().cancel()
+        if (!animated) {
+            detach()
+            onClosed()
+            return
+        }
+        root.animate()
+            .alpha(0f)
+            .setDuration(CaptureSelectionMotion.EXIT_DURATION_MS)
+            .setInterpolator(PathInterpolator(0.4f, 0f, 1f, 1f))
+            .withEndAction {
+                detach()
+                onClosed()
+            }
+            .start()
+    }
+
+    private fun detach() {
         if (!attached) return
         attached = false
         runCatching { windowManager.removeView(root) }
@@ -105,53 +128,46 @@ internal class CaptureSelectionWindow(
         private val touchSlop = 8f * density
         private val minSelectionHeight = 96f * density
         private val edgeInset = 10f * density
-        private val blue = Color.rgb(59, 130, 246)
-        private val white = Color.WHITE
+        private val blue = Color.rgb(69, 160, 255)
 
         private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(112, 15, 23, 42)
+            color = Color.argb(126, 9, 24, 43)
         }
         private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = blue
-            strokeWidth = 2f * density
+            strokeWidth = 1.25f * density
+            style = Paint.Style.STROKE
+            setShadowLayer(4f * density, 0f, 0f, Color.argb(230, 24, 137, 255))
+        }
+        private val borderCorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(210, 239, 249, 255)
+            strokeWidth = 0.55f * density
             style = Paint.Style.STROKE
         }
         private val controlFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(248, 255, 255, 255)
+            color = Color.argb(246, 235, 247, 255)
             style = Paint.Style.FILL
         }
         private val controlStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = blue
-            strokeWidth = 1.5f * density
+            strokeWidth = 1f * density
             style = Paint.Style.STROKE
-        }
-        private val captureFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = blue
-            style = Paint.Style.FILL
         }
         private val glyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = blue
-            strokeWidth = 2f * density
+            strokeWidth = 1.15f * density
             strokeCap = Paint.Cap.ROUND
             style = Paint.Style.STROKE
         }
-        private val captureTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = white
-            textAlign = Paint.Align.CENTER
-            textSize = 10f * density
-            typeface = Typeface.DEFAULT_BOLD
-        }
-
-        private val handleWidth = 60f * density
-        private val handleHeight = 18f * density
-        private val captureRadius = 29f * density
+        private val captureGlass: Drawable? =
+            ContextCompat.getDrawable(context, R.drawable.bg_ball_glass)?.mutate()
         private val captureIcon: Drawable? = ContextCompat.getDrawable(context, R.drawable.ic_menu_capture)
             ?.mutate()
-            ?.also { DrawableCompat.setTint(it, white) }
+            ?.also { DrawableCompat.setTint(it, Color.rgb(20, 111, 239)) }
 
         private var selectionTop = 0f
         private var selectionBottom = 0f
-        private var pendingInitialCenterY: Int? = null
+        private var captureAnchor: CaptureSelectionAnchor? = null
         private var activeTarget = TouchTarget.NONE
         private var downX = 0f
         private var downY = 0f
@@ -209,8 +225,8 @@ internal class CaptureSelectionWindow(
             super.onDetachedFromWindow()
         }
 
-        fun configureInitialCenter(screenY: Int) {
-            pendingInitialCenterY = screenY
+        fun configureInitialAnchor(anchor: CaptureSelectionAnchor) {
+            captureAnchor = anchor
             if (height > 0) initializeSelection()
             resetInactivityTimer()
         }
@@ -223,13 +239,12 @@ internal class CaptureSelectionWindow(
         private fun initializeSelection() {
             if (height <= 0) return
             val desiredHeight = max(240f * density, height * 0.36f).coerceAtMost(height * 0.62f)
-            val desiredCenter = pendingInitialCenterY?.toFloat()?.coerceIn(
+            val desiredCenter = captureAnchor?.centerY?.toFloat()?.coerceIn(
                 desiredHeight / 2f + edgeInset,
                 height - desiredHeight / 2f - edgeInset
             ) ?: height * 0.46f
             selectionTop = desiredCenter - desiredHeight / 2f
             selectionBottom = desiredCenter + desiredHeight / 2f
-            pendingInitialCenterY = null
             updateControlRects()
             invalidate()
         }
@@ -242,6 +257,8 @@ internal class CaptureSelectionWindow(
             canvas.drawRect(0f, selectionBottom, width.toFloat(), height.toFloat(), dimPaint)
             canvas.drawLine(0f, selectionTop, width.toFloat(), selectionTop, borderPaint)
             canvas.drawLine(0f, selectionBottom, width.toFloat(), selectionBottom, borderPaint)
+            canvas.drawLine(0f, selectionTop, width.toFloat(), selectionTop, borderCorePaint)
+            canvas.drawLine(0f, selectionBottom, width.toFloat(), selectionBottom, borderCorePaint)
 
             updateControlRects()
             drawSecondaryControl(canvas, topHandleRect)
@@ -253,7 +270,12 @@ internal class CaptureSelectionWindow(
 
         private fun drawSecondaryControl(canvas: Canvas, rect: RectF) {
             val radius = min(rect.width(), rect.height()) / 2f
-            controlFillPaint.setShadowLayer(5f * density, 0f, 1.5f * density, 0x22000000)
+            controlFillPaint.setShadowLayer(
+                4f * density,
+                0f,
+                0f,
+                Color.argb(150, 37, 145, 255)
+            )
             canvas.drawRoundRect(rect, radius, radius, controlFillPaint)
             controlFillPaint.clearShadowLayer()
             canvas.drawRoundRect(rect, radius, radius, controlStrokePaint)
@@ -262,56 +284,45 @@ internal class CaptureSelectionWindow(
         private fun drawHandleGlyph(canvas: Canvas, rect: RectF) {
             val cx = rect.centerX()
             val cy = rect.centerY()
-            val half = 7f * density
-            val gap = 2f * density
+            val half = 5f * density
+            val gap = 1.6f * density
             canvas.drawLine(cx - half, cy - gap, cx + half, cy - gap, glyphPaint)
             canvas.drawLine(cx - half, cy + gap, cx + half, cy + gap, glyphPaint)
         }
 
         private fun drawCaptureControl(canvas: Canvas) {
-            val cx = captureRect.centerX()
-            val cy = captureRect.centerY()
-            captureFillPaint.setShadowLayer(7f * density, 0f, 2f * density, 0x32000000)
-            canvas.drawCircle(cx, cy, captureRadius, captureFillPaint)
-            captureFillPaint.clearShadowLayer()
+            val left = captureRect.left.roundToInt()
+            val top = captureRect.top.roundToInt()
+            val right = captureRect.right.roundToInt()
+            val bottom = captureRect.bottom.roundToInt()
+            captureGlass?.setBounds(left, top, right, bottom)
+            captureGlass?.draw(canvas)
 
-            val ringPaint = Paint(borderPaint).apply {
-                color = Color.argb(220, 255, 255, 255)
-                strokeWidth = 2f * density
-            }
-            canvas.drawCircle(cx, cy, captureRadius, ringPaint)
-
-            val iconSize = (24f * density).roundToInt()
-            val left = (cx - iconSize / 2f).roundToInt()
-            val top = (cy - 17f * density).roundToInt()
-            captureIcon?.setBounds(left, top, left + iconSize, top + iconSize)
+            val iconSize = (captureRect.width() * 0.43f).roundToInt()
+            val iconLeft = (captureRect.centerX() - iconSize / 2f).roundToInt()
+            val iconTop = (captureRect.centerY() - iconSize / 2f).roundToInt()
+            captureIcon?.setBounds(iconLeft, iconTop, iconLeft + iconSize, iconTop + iconSize)
             captureIcon?.draw(canvas)
-            canvas.drawText("截图", cx, cy + 19f * density, captureTextPaint)
         }
 
         private fun updateControlRects() {
             if (width <= 0 || height <= 0) return
-            val centerX = width / 2f
-            topHandleRect.set(
-                centerX - handleWidth / 2f,
-                selectionTop - handleHeight / 2f,
-                centerX + handleWidth / 2f,
-                selectionTop + handleHeight / 2f
-            )
-            bottomHandleRect.set(
-                centerX - handleWidth / 2f,
-                selectionBottom - handleHeight / 2f,
-                centerX + handleWidth / 2f,
-                selectionBottom + handleHeight / 2f
-            )
+            CaptureSelectionDesign.handleBounds(width, selectionTop, density).also { bounds ->
+                topHandleRect.set(bounds.left, bounds.top, bounds.right, bounds.bottom)
+            }
+            CaptureSelectionDesign.handleBounds(width, selectionBottom, density).also { bounds ->
+                bottomHandleRect.set(bounds.left, bounds.top, bounds.right, bounds.bottom)
+            }
 
-            val captureCx = width - captureRadius - 10f * density
-            val captureCy = (selectionTop + selectionBottom) / 2f
+            val anchor = captureAnchor ?: return
+            val screenBounds = CaptureSelectionDesign.captureButtonBounds(anchor)
+            val location = IntArray(2)
+            getLocationOnScreen(location)
             captureRect.set(
-                captureCx - captureRadius,
-                captureCy - captureRadius,
-                captureCx + captureRadius,
-                captureCy + captureRadius
+                screenBounds.left - location[0],
+                screenBounds.top - location[1],
+                screenBounds.right - location[0],
+                screenBounds.bottom - location[1]
             )
         }
 
@@ -346,8 +357,7 @@ internal class CaptureSelectionWindow(
                             )
                             invalidate()
                         }
-                        TouchTarget.MOVE_SELECTION,
-                        TouchTarget.CAPTURE -> if (moved) {
+                        TouchTarget.MOVE_SELECTION -> if (moved) {
                             moveSelectionBy(dy)
                             invalidate()
                         }

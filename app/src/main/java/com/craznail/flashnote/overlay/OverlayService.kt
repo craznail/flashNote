@@ -145,8 +145,8 @@ class OverlayService : Service() {
                 wantImageOnly = false
                 triggerCapture()
             }
-            ball.onCaptureSelectionRequested = { centerY ->
-                showCaptureSelection(centerY)
+            ball.onCaptureSelectionRequested = { anchor ->
+                showCaptureSelection(anchor)
             }
             ball.onOpenLatestNote = {
                 startActivity(
@@ -182,7 +182,7 @@ class OverlayService : Service() {
         }
     }
 
-    private fun showCaptureSelection(centerY: Int) {
+    private fun showCaptureSelection(anchor: CaptureSelectionAnchor) {
         if (selectionWindow != null) return
         val wm = windowManager ?: return
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -191,26 +191,30 @@ class OverlayService : Service() {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
-        ballView?.setCaptureHidden(true)
         selectionWindow = CaptureSelectionWindow(
             context = this,
             windowManager = wm,
             overlayType = type,
-            initialCenterY = centerY,
+            initialAnchor = anchor,
             onConfirm = { bounds ->
-                closeCaptureSelection()
-                wantSummary = false
-                wantImageOnly = false
-                triggerCapture(bounds.top, bounds.bottom)
+                closeCaptureSelection {
+                    wantSummary = false
+                    wantImageOnly = false
+                    triggerCapture(bounds.top, bounds.bottom)
+                }
             },
             onCancel = { closeCaptureSelection() }
-        ).also { it.show() }
+        ).also {
+            it.show()
+            ballView?.hideForCaptureSelection()
+        }
     }
 
-    private fun closeCaptureSelection() {
-        selectionWindow?.close()
+    private fun closeCaptureSelection(onClosed: () -> Unit = {}) {
+        val window = selectionWindow ?: return
         selectionWindow = null
-        ballView?.setCaptureHidden(false)
+        ballView?.revealFromCaptureSelection(CaptureSelectionMotion.EXIT_DURATION_MS)
+        window.close(animated = true, onClosed = onClosed)
     }
 
     private fun setCaptureUiHidden(hidden: Boolean) {
@@ -269,7 +273,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         if (instance === this) instance = null
-        selectionWindow?.close()
+        selectionWindow?.close(animated = false)
         selectionWindow = null
         CaptureService.stop(this)
         ballView?.let { v -> runCatching { windowManager?.removeView(v) } }

@@ -46,7 +46,7 @@ class OverlayBallView @JvmOverloads constructor(
 ) : FrameLayout(context, attrs) {
 
     var onCapture: (() -> Unit)? = null
-    var onCaptureSelectionRequested: ((Int) -> Unit)? = null
+    internal var onCaptureSelectionRequested: ((CaptureSelectionAnchor) -> Unit)? = null
     var onOpenLatestNote: (() -> Unit)? = null
     var onOpenSettings: (() -> Unit)? = null
     var onExit: (() -> Unit)? = null
@@ -307,6 +307,8 @@ class OverlayBallView @JvmOverloads constructor(
     }
 
     fun setCaptureHidden(hidden: Boolean) {
+        animate().cancel()
+        alpha = 1f
         if (hidden) {
             cancelIdleCollapse()
             hideActionMenu(animate = false)
@@ -315,6 +317,28 @@ class OverlayBallView @JvmOverloads constructor(
             scheduleIdleCollapse()
         }
         visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+    }
+
+    fun hideForCaptureSelection() {
+        animate().cancel()
+        cancelIdleCollapse()
+        hideActionMenu(animate = false)
+        clearSidePill(immediate = true)
+        alpha = 1f
+        visibility = View.INVISIBLE
+    }
+
+    fun revealFromCaptureSelection(durationMs: Long) {
+        animate().cancel()
+        expandFromIdle(animated = false)
+        visibility = View.VISIBLE
+        alpha = 0f
+        animate()
+            .alpha(1f)
+            .setDuration(durationMs)
+            .setInterpolator(ENTER_EASING)
+            .withEndAction { scheduleIdleCollapse() }
+            .start()
     }
 
     fun setBallSize(size: OverlayBallSize) {
@@ -604,7 +628,13 @@ class OverlayBallView @JvmOverloads constructor(
             ballContainer.scaleY = 1f
             val location = IntArray(2)
             ballContainer.getLocationOnScreen(location)
-            onCaptureSelectionRequested?.invoke(location[1] + ballSizePx / 2)
+            onCaptureSelectionRequested?.invoke(
+                CaptureSelectionAnchor(
+                    leftPx = location[0],
+                    topPx = location[1],
+                    diameterPx = ballSizePx
+                )
+            )
         }
         longPressRunnable = runnable
         handler.postDelayed(runnable, ViewConfiguration.getLongPressTimeout().toLong())
