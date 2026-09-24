@@ -49,11 +49,6 @@
     <string name="create_tags_first">请先在资料库中创建标签</string>
     <string name="save">保存</string>
     <string name="settings_title">设置</string>
-    <string name="app_background_title">应用背景</string>
-    <string name="app_background_desc">首页、资料库和笔记详情会同步使用</string>
-    <string name="background_glacier">冰川</string>
-    <string name="background_dawn">晨雾</string>
-    <string name="background_twilight">暮海</string>
     <string name="overlay_control">悬浮球</string>
     <string name="overlay_control_desc">开启后可在其他应用上快速截屏记录</string>
     <string name="empty_notes">点悬浮球展开菜单，选择截屏方式</string>
