@@ -1,33 +1,16 @@
-# Selection mode visual QA
+# flashNote 界面验收
 
-source visual truth path: `C:/Users/CAOGEN~1/AppData/Local/Temp/codex-clipboard-9b56a518-5c81-4f52-8de5-d5a0fd15bc40.png`
-implementation screenshot path: unavailable (no Android emulator/device is connected)
-viewport: source image 852 x 1838 px; implementation viewport unavailable
-state: Android floating-ball long-press selection mode
+## 设计基准
 
-## Comparison evidence
+当前界面的唯一视觉参考是 [`design/reference/`](design/reference/README.md) 中的四张用户提供的截图：首页、全部笔记、笔记详情、极简详情。参考图的 iOS 系统状态栏和导航区域不移植到 Android。笔记整理和“我的/设置”沿用同一套白底、蓝色强调和浅色卡片风格。悬浮球本体及其交互保持原样。
 
-The source screenshot was opened and used as the visual target. A matching rendered Android screen could not be captured: no emulator process is available, and `adb` cannot create its `.android` directory in the current sandbox. The Gradle verification run also reached Kotlin compilation but could not be repeated after the final visibility fix because the environment usage limit rejected the required elevated cache access.
+## 已验证
 
-## Findings
+- `:app:assembleDebug` 与 `:app:testDebugUnitTest` 通过。
+- Android 模拟器上检查了首页、全部笔记、详情、极简详情、整理和设置页。
+- 首页最近笔记、搜索、全部笔记、笔记整理和用户入口可到达对应页面。
+- 列表支持搜索、分类筛选、排序、列表/网格切换、长按多选、批量移动分类，以及经过确认后移入回收站。
+- 详情展示 OCR 内容与摘要，可复制、整理、删除并进入极简模式。
+- 极简模式可通过上下滑动在相邻笔记间切换，返回后回到普通详情。
 
-- [P1] Runtime visual comparison blocked. The source and implementation cannot be placed in the same comparison input until an Android screen capture is available.
-
-## Implementation checklist
-
-- [x] Selection border uses a brighter blue core plus soft blue glow.
-- [x] Top and bottom handles use compact 32dp x 14dp geometry.
-- [x] Capture control uses the existing glass-ball asset and capture icon.
-- [x] Capture control bounds are derived from the floating ball's real screen anchor and diameter.
-- [x] Selection exit crossfades the overlay out while revealing the ball at the same anchor.
-- [ ] Capture and compare a real Android selection-mode screenshot.
-
-## Required fidelity surfaces
-
-- Fonts and typography: no new text is introduced in the selection control.
-- Spacing and layout rhythm: handle geometry and capture anchor are covered by unit tests.
-- Colors and visual tokens: border and control colors are defined in `CaptureSelectionWindow`.
-- Image quality and asset fidelity: existing `bg_ball_glass` and `ic_menu_capture` resources are reused.
-- Copy and content: unchanged.
-
-final result: blocked
+内容来自设备上真实笔记，缩略图、标题、分类、摘要和笔记数量会随数据变化；参考图中的示例内容不作为固定界面文案。

@@ -1,7 +1,9 @@
 package com.craznail.flashnote.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -22,10 +25,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Diamond
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.WorkspacePremium
@@ -56,8 +61,11 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -70,7 +78,6 @@ import com.craznail.flashnote.BuildConfig
 import com.craznail.flashnote.R
 import com.craznail.flashnote.data.OverlayBallSize
 import com.craznail.flashnote.data.PreferencesManager
-import com.craznail.flashnote.ui.theme.FlashBackground
 import com.craznail.flashnote.ui.theme.FlashOnSurfaceMuted
 import com.craznail.flashnote.ui.theme.FlashPrimary
 import com.craznail.flashnote.ui.theme.FlashSuccess
@@ -78,6 +85,7 @@ import com.craznail.flashnote.ui.theme.FlashSuccess
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    overlayRunning: Boolean,
     localSummaryEnabled: Boolean,
     feedbackBadgePersistent: Boolean,
     ballSize: OverlayBallSize,
@@ -86,6 +94,7 @@ fun SettingsScreen(
     remoteAiBaseUrl: String,
     remoteAiApiKey: String,
     remoteAiModel: String,
+    onOverlayRunningChange: (Boolean) -> Unit,
     onLocalSummaryChange: (Boolean) -> Unit,
     onFeedbackBadgePersistentChange: (Boolean) -> Unit,
     onBallSizeChange: (OverlayBallSize) -> Unit,
@@ -107,15 +116,16 @@ fun SettingsScreen(
         editModel = remoteAiModel.ifBlank { PreferencesManager.DEFAULT_MODEL }
     }
 
-    Scaffold(
-        containerColor = FlashBackground,
+    Box(Modifier.fillMaxSize().background(DesignBackground)) {
+        Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        stringResource(R.string.settings_title),
+                        "我的 · 设置",
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF111827)
+                        color = DesignInk
                     )
                 },
                 navigationIcon = {
@@ -123,14 +133,14 @@ fun SettingsScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back),
-                            tint = Color(0xFF111827)
+                            tint = DesignInk
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = FlashBackground,
-                    titleContentColor = Color(0xFF111827),
-                    navigationIconContentColor = Color(0xFF111827)
+                    containerColor = Color.White,
+                    titleContentColor = DesignInk,
+                    navigationIconContentColor = DesignInk
                 )
             )
         }
@@ -142,6 +152,23 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
+            Text("应用设置", color = DesignInk, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(14.dp))
+
+            SettingsCard {
+                SettingSwitchRow(
+                    icon = Icons.Default.RadioButtonChecked,
+                    iconBg = FlashPrimary.copy(alpha = 0.12f),
+                    iconTint = FlashPrimary,
+                    title = stringResource(R.string.overlay_control),
+                    desc = stringResource(R.string.overlay_control_desc),
+                    checked = overlayRunning,
+                    onCheckedChange = onOverlayRunningChange
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
             SettingsCard {
                 SettingSwitchRow(
                     icon = Icons.Default.Description,
@@ -423,6 +450,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(16.dp))
         }
     }
+    }
 }
 
 @Composable
@@ -461,10 +489,7 @@ private fun BallSizeSetting(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(
-                            if (active) FlashPrimary
-                            else Color(0xFFF3F4F6)
-                        )
+                        .background(if (active) DesignBlue else DesignPaleBlue)
                         .clickable { onSelected(size) }
                         .padding(vertical = 9.dp),
                     contentAlignment = Alignment.Center
@@ -473,7 +498,7 @@ private fun BallSizeSetting(
                         label,
                         fontSize = 12.sp,
                         fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                        color = if (active) Color.White else Color(0xFF4B5563),
+                        color = if (active) Color.White else DesignMuted,
                         maxLines = 1
                     )
                 }
@@ -486,9 +511,9 @@ private fun BallSizeSetting(
 private fun SettingsCard(content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Box(Modifier.padding(16.dp)) { content() }
     }
@@ -529,12 +554,12 @@ private fun SettingSwitchRow(
                 title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF111827)
+                color = DesignInk
             )
             Text(
                 desc,
                 style = MaterialTheme.typography.bodySmall,
-                color = FlashOnSurfaceMuted,
+                color = DesignMuted,
                 maxLines = 2
             )
         }
@@ -542,7 +567,7 @@ private fun SettingSwitchRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             enabled = enabled,
-            colors = SwitchDefaults.colors(checkedTrackColor = FlashPrimary)
+            colors = SwitchDefaults.colors(checkedTrackColor = DesignBlue)
         )
     }
 }

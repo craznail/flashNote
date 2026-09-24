@@ -16,5 +16,8 @@ data class Note(
     val createdAt: Long = System.currentTimeMillis(),
     val ocrText: String? = null,
     val summary: String? = null,
-    val summaryMode: SummaryMode = SummaryMode.NONE
+    val summaryMode: SummaryMode = SummaryMode.NONE,
+    val folderId: Long? = null,
+    val archivedAt: Long? = null,
+    val trashedAt: Long? = null
 )

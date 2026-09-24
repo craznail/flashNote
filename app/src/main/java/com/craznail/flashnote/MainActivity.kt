@@ -8,6 +8,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
@@ -20,12 +21,17 @@ import androidx.lifecycle.lifecycleScope
 import com.craznail.flashnote.data.Note
 import com.craznail.flashnote.data.OverlayPreferences
 import com.craznail.flashnote.overlay.OverlayService
-import com.craznail.flashnote.ui.NoteDetailScreen
-import com.craznail.flashnote.ui.NotesScreen
+import com.craznail.flashnote.ui.FlashAllNotesScreen
+import com.craznail.flashnote.ui.FlashCollectionScreen
+import com.craznail.flashnote.ui.FlashHomeScreen
+import com.craznail.flashnote.ui.FlashNoteDetailScreen
+import com.craznail.flashnote.ui.FlashOrganizerScreen
 import com.craznail.flashnote.ui.SettingsScreen
+import com.craznail.flashnote.ui.LibraryDestination
 import com.craznail.flashnote.ui.theme.FlashNoteTheme
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 
 class MainActivity : ComponentActivity() {
 
@@ -50,6 +56,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             FlashNoteTheme {
                 var showSettings by remember { mutableStateOf(false) }
+                var showLibrary by remember { mutableStateOf(false) }
+                var showAllNotes by remember { mutableStateOf(false) }
+                var listQuery by remember { mutableStateOf("") }
+                var libraryDestination by remember {
+                    mutableStateOf<LibraryDestination?>(null)
+                }
                 var selectedNote by remember { mutableStateOf<Note?>(null) }
                 val settingsTick by openSettingsRequests.collectAsState()
                 val requestedLatestNote by latestNoteToOpen.collectAsState()
@@ -59,13 +71,38 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(requestedLatestNote) {
                     requestedLatestNote?.let { note ->
                         showSettings = false
+                        showLibrary = false
+                        showAllNotes = false
+                        libraryDestination = null
                         selectedNote = note
                         latestNoteToOpen.value = null
                     }
                 }
-                // Driven by OverlayService lifecycle — covers chip toggle AND START_OVERLAY intent
+                // Driven by the service lifecycle so the dedicated settings switch stays accurate.
                 val overlayRunning by OverlayService.running.collectAsState()
                 val notes by app.notes.observeNotes().collectAsState(initial = emptyList())
+                val folders by app.notes.observeFolders().collectAsState(initial = emptyList())
+                val tags by app.notes.observeTags().collectAsState(initial = emptyList())
+                val folderSummaries by app.notes.observeFolderSummaries()
+                    .collectAsState(initial = emptyList())
+                val tagSummaries by app.notes.observeTagSummaries()
+                    .collectAsState(initial = emptyList())
+                val archiveCount by app.notes.observeArchiveCount().collectAsState(initial = 0)
+                val trashCount by app.notes.observeTrashCount().collectAsState(initial = 0)
+                val noteTagsFlow = remember(selectedNote?.id) {
+                    selectedNote?.let { app.notes.observeTagsForNote(it.id) } ?: flowOf(emptyList())
+                }
+                val selectedNoteTags by noteTagsFlow.collectAsState(initial = emptyList())
+                val collectionNotesFlow = remember(libraryDestination) {
+                    when (val destination = libraryDestination) {
+                        is LibraryDestination.Folder -> app.notes.observeFolderNotes(destination.id)
+                        is LibraryDestination.Tag -> app.notes.observeTaggedNotes(destination.id)
+                        LibraryDestination.Archive -> app.notes.observeArchivedNotes()
+                        LibraryDestination.Trash -> app.notes.observeTrashNotes()
+                        null -> flowOf(emptyList())
+                    }
+                }
+                val collectionNotes by collectionNotesFlow.collectAsState(initial = emptyList())
                 val localSummary by app.prefs.localSummaryEnabled.collectAsState()
                 val feedbackBadgePersistent by overlayPrefs.feedbackBadgePersistent.collectAsState()
                 val ballSize by overlayPrefs.ballSize.collectAsState()
@@ -75,9 +112,23 @@ class MainActivity : ComponentActivity() {
                 val remoteApiKey by app.prefs.remoteAiApiKeyFlow.collectAsState()
                 val remoteModel by app.prefs.remoteAiModelFlow.collectAsState()
 
+                BackHandler(
+                    enabled = showSettings || selectedNote != null ||
+                        libraryDestination != null || showLibrary || showAllNotes
+                ) {
+                    when {
+                        showSettings -> showSettings = false
+                        selectedNote != null -> selectedNote = null
+                        libraryDestination != null -> libraryDestination = null
+                        showLibrary -> showLibrary = false
+                        showAllNotes -> showAllNotes = false
+                    }
+                }
+
                 when {
                     showSettings -> {
                         SettingsScreen(
+                            overlayRunning = overlayRunning,
                             localSummaryEnabled = localSummary,
                             feedbackBadgePersistent = feedbackBadgePersistent,
                             ballSize = ballSize,
@@ -86,6 +137,15 @@ class MainActivity : ComponentActivity() {
                             remoteAiBaseUrl = remoteBaseUrl,
                             remoteAiApiKey = remoteApiKey,
                             remoteAiModel = remoteModel,
+                            onOverlayRunningChange = { enabled ->
+                                if (enabled) {
+                                    ensureOverlayPermission {
+                                        OverlayService.start(this@MainActivity)
+                                    }
+                                } else {
+                                    OverlayService.stop(this@MainActivity)
+                                }
+                            },
                             onLocalSummaryChange = { app.prefs.setLocalSummaryEnabled(it) },
                             onFeedbackBadgePersistentChange = {
                                 overlayPrefs.setFeedbackBadgePersistent(it)
@@ -106,34 +166,139 @@ class MainActivity : ComponentActivity() {
                     }
                     selectedNote != null -> {
                         val note = selectedNote!!
-                        NoteDetailScreen(
+                        FlashNoteDetailScreen(
                             note = note,
+                            browseNotes = if (collectionNotes.any { it.id == note.id }) collectionNotes else notes,
+                            folders = folders,
+                            tags = tags,
+                            selectedTagIds = selectedNoteTags.mapTo(linkedSetOf()) { it.id },
                             onBack = { selectedNote = null },
-                            onDelete = {
+                            onShowNote = { selectedNote = it },
+                            onMoveToFolder = { folderId ->
                                 lifecycleScope.launch {
-                                    app.notes.delete(note)
+                                    app.notes.moveToFolder(note.id, folderId)
+                                    selectedNote = note.copy(folderId = folderId)
+                                }
+                            },
+                            onReplaceTags = { tagIds ->
+                                lifecycleScope.launch { app.notes.replaceTags(note.id, tagIds) }
+                            },
+                            onEditSummary = { summary ->
+                                lifecycleScope.launch {
+                                    app.notes.updateSummary(note.id, summary)
+                                    selectedNote = note.copy(summary = summary.trim().ifBlank { null })
+                                }
+                            },
+                            onArchive = {
+                                lifecycleScope.launch {
+                                    app.notes.archive(note.id)
+                                    selectedNote = null
+                                }
+                            },
+                            onRestoreFromArchive = {
+                                lifecycleScope.launch {
+                                    app.notes.restoreFromArchive(note.id)
+                                    selectedNote = null
+                                }
+                            },
+                            onMoveToTrash = {
+                                lifecycleScope.launch {
+                                    app.notes.moveToTrash(note.id)
+                                    selectedNote = null
+                                }
+                            },
+                            onRestoreFromTrash = {
+                                lifecycleScope.launch {
+                                    app.notes.restoreFromTrash(note.id)
+                                    selectedNote = null
+                                }
+                            },
+                            onPermanentlyDelete = {
+                                lifecycleScope.launch {
+                                    app.notes.permanentlyDelete(note)
                                     selectedNote = null
                                 }
                             }
                         )
                     }
-                    else -> {
-                        NotesScreen(
-                            notes = notes,
-                            overlayRunning = overlayRunning,
-                            onToggleOverlay = {
-                                if (overlayRunning) {
-                                    OverlayService.stop(this@MainActivity)
-                                } else {
-                                    ensureOverlayPermission {
-                                        OverlayService.start(this@MainActivity)
+                    libraryDestination != null -> {
+                        val destination = libraryDestination!!
+                        FlashCollectionScreen(
+                            destination = destination,
+                            notes = collectionNotes,
+                            onBack = { libraryDestination = null },
+                            onOpenNote = { selectedNote = it },
+                            onRestore = { note ->
+                                lifecycleScope.launch {
+                                    when (destination) {
+                                        LibraryDestination.Archive ->
+                                            app.notes.restoreFromArchive(note.id)
+                                        LibraryDestination.Trash ->
+                                            app.notes.restoreFromTrash(note.id)
+                                        else -> Unit
                                     }
                                 }
                             },
-                            onOpenSettings = { showSettings = true },
+                            onPermanentlyDelete = { note ->
+                                lifecycleScope.launch { app.notes.permanentlyDelete(note) }
+                            }
+                        )
+                    }
+                    showLibrary -> {
+                        FlashOrganizerScreen(
+                            folders = folderSummaries,
+                            tags = tagSummaries,
+                            archiveCount = archiveCount,
+                            trashCount = trashCount,
+                            onBack = { showLibrary = false },
+                            onOpenAll = { showLibrary = false; listQuery = ""; showAllNotes = true },
+                            onOpenDestination = { libraryDestination = it },
+                            onCreateFolder = { name ->
+                                lifecycleScope.launch { app.notes.createFolder(name) }
+                            },
+                            onCreateTag = { name, colorKey ->
+                                lifecycleScope.launch { app.notes.createTag(name, colorKey) }
+                            },
+                            onDeleteFolder = { id ->
+                                lifecycleScope.launch { app.notes.deleteFolder(id) }
+                            },
+                            onDeleteTag = { id ->
+                                lifecycleScope.launch { app.notes.deleteTag(id) }
+                            }
+                        )
+                    }
+                    showAllNotes -> {
+                        FlashAllNotesScreen(
+                            notes = notes,
+                            folders = folderSummaries,
+                            initialQuery = listQuery,
+                            onBack = { showAllNotes = false },
                             onOpenNote = { selectedNote = it },
-                            onDelete = { note ->
-                                lifecycleScope.launch { app.notes.delete(note) }
+                            onMoveSelected = { ids, folderId ->
+                                lifecycleScope.launch {
+                                    ids.forEach { app.notes.moveToFolder(it, folderId) }
+                                }
+                            },
+                            onTrashSelected = { ids ->
+                                lifecycleScope.launch {
+                                    ids.forEach { app.notes.moveToTrash(it) }
+                                }
+                            }
+                        )
+                    }
+                    else -> {
+                        FlashHomeScreen(
+                            notes = notes,
+                            folders = folderSummaries,
+                            onOpenNote = { selectedNote = it },
+                            onOpenAll = { query -> listQuery = query; showAllNotes = true },
+                            onOpenOrganizer = { showLibrary = true },
+                            onOpenMy = { showSettings = true },
+                            onStartCapture = {
+                                ensureOverlayPermission {
+                                    OverlayService.start(this@MainActivity)
+                                    Toast.makeText(this@MainActivity, "悬浮球已开启，点击浮球截屏", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         )
                     }
