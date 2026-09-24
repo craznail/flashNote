@@ -51,6 +51,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -117,13 +118,15 @@ fun FlashNoteDetailScreen(
     BackHandler(enabled = minimal) { minimal = false }
 
     if (minimal) {
-        MinimalReadingScreen(
-            note = note,
-            folderName = folders.firstOrNull { it.id == note.folderId }?.name,
-            onBack = { minimal = false },
-            onPrevious = { if (noteIndex > 0) onShowNote(orderedNotes[noteIndex - 1]) },
-            onNext = { if (noteIndex >= 0 && noteIndex < orderedNotes.lastIndex) onShowNote(orderedNotes[noteIndex + 1]) }
-        )
+        key(note.id) {
+            MinimalReadingScreen(
+                note = note,
+                folderName = folders.firstOrNull { it.id == note.folderId }?.name,
+                onBack = { minimal = false },
+                onPrevious = { if (noteIndex > 0) onShowNote(orderedNotes[noteIndex - 1]) },
+                onNext = { if (noteIndex >= 0 && noteIndex < orderedNotes.lastIndex) onShowNote(orderedNotes[noteIndex + 1]) }
+            )
+        }
     } else {
         Scaffold(
             containerColor = DesignBackground,
@@ -172,23 +175,36 @@ fun FlashNoteDetailScreen(
                             if (!note.ocrText.isNullOrBlank()) {
                                 Text(note.ocrText, color = DesignInk, fontSize = 15.sp, lineHeight = 24.sp)
                             } else {
-                                Text("点击截图查看原图", color = DesignMuted, fontSize = 14.sp)
+                                AsyncImage(
+                                    model = Uri.fromFile(File(note.imagePath)),
+                                    contentDescription = "笔记完整截图",
+                                    modifier = Modifier.fillMaxWidth().clickable { imageOpen = true },
+                                    contentScale = ContentScale.FillWidth
+                                )
                             }
                         }
                     }
-                    if (!note.summary.isNullOrBlank()) {
-                        DesignCard(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.AutoAwesome, null, tint = DesignBlue, modifier = Modifier.size(21.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("详情摘要", color = DesignInk, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    DesignCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AutoAwesome, null, tint = DesignBlue, modifier = Modifier.size(21.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("详情摘要", color = DesignInk, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                if (note.summary.isNullOrBlank()) {
+                                    TextButton(onClick = { summaryDraft = ""; summaryEditorOpen = true }) { Text("添加摘要") }
+                                } else {
                                     Text("由 AI 生成", color = DesignMuted, fontSize = 11.sp)
                                 }
-                                Spacer(Modifier.height(11.dp))
-                                Surface(shape = RoundedCornerShape(13.dp), color = DesignPaleBlue) {
-                                    Text(note.summary, modifier = Modifier.padding(13.dp), color = DesignInk, fontSize = 14.sp, lineHeight = 22.sp)
-                                }
+                            }
+                            Spacer(Modifier.height(11.dp))
+                            Surface(shape = RoundedCornerShape(13.dp), color = DesignPaleBlue) {
+                                Text(
+                                    note.summary?.takeIf { it.isNotBlank() } ?: "暂无摘要",
+                                    modifier = Modifier.padding(13.dp),
+                                    color = if (note.summary.isNullOrBlank()) DesignMuted else DesignInk,
+                                    fontSize = 14.sp,
+                                    lineHeight = 22.sp
+                                )
                             }
                         }
                     }
