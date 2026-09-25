@@ -148,7 +148,7 @@ class ArcMenuModelTest {
         assertEquals(40f, ArcMenuDesign.buttonSizeDp, 0f)
         assertEquals(33f, ArcMenuDesign.dockedVisibleDp(ArcMenuDesign.ballSizeDp), 0f)
         assertEquals(
-            ArcMenuDesign.ballSizeDp * 0.26f,
+            16f,
             ArcMenuDesign.idleDockedVisibleDp(ArcMenuDesign.ballSizeDp),
             0f
         )
@@ -167,16 +167,20 @@ class ArcMenuModelTest {
                 ArcMenuDesign.dockedVisibleDp(size.diameterDp),
                 0f
             )
-            assertEquals(
-                size.diameterDp * 0.26f,
-                ArcMenuDesign.idleDockedVisibleDp(size.diameterDp),
-                0f
-            )
+            assertTrue(ArcMenuDesign.idleDockedVisibleDp(size.diameterDp) >= 16f)
+            assertTrue(ArcMenuDesign.idleDockedVisibleDp(size.diameterDp) < ArcMenuDesign.dockedVisibleDp(size.diameterDp))
         }
 
         // These stay fixed regardless of the selected main-ball size.
         assertEquals(40f, ArcMenuDesign.buttonSizeDp, 0f)
         assertEquals(14f, ArcMenuDesign.feedbackBadgeSizeDp, 0f)
+    }
+
+    @Test
+    fun extraSmallBall_keepsAVisibleEdgeSliver() {
+        val extraSmall = OverlayBallSize.EXTRA_SMALL.diameterDp
+        assertEquals(16f, ArcMenuDesign.idleDockedVisibleDp(extraSmall), 0f)
+        assertTrue(ArcMenuDesign.idleDockedVisibleDp(extraSmall) / extraSmall > 0.26f)
     }
 
     @Test

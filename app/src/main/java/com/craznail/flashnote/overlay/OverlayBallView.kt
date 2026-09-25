@@ -35,7 +35,7 @@ import kotlin.math.roundToInt
 /**
  * Floating overlay ball:
  * - Main ball is size-selectable (32–56dp) while the touch target stays 56dp
- * - Active dock exposes 75%; after idle it retracts to a low-profile 26% edge sliver
+ * - Active dock exposes 75%; after idle it keeps at least 16dp visible at the edge
  * - Tap toggles a compact inward fan menu (capture only via menu items)
  * - Sub-buttons stay 40dp while menu visuals remain deliberately quiet
  * - A single 14dp inward-corner badge carries thumbnail / success / failure feedback
@@ -197,9 +197,18 @@ class OverlayBallView @JvmOverloads constructor(
         ).apply {
             val dm = resources.displayMetrics
             gravity = Gravity.TOP or Gravity.END
+            val insetPx = (touchHotspotPx - ballSizePx) / 2
+            val startX = DockedBallLayout.dockedStartX(
+                dockLeft = false,
+                screenWidth = dm.widthPixels,
+                windowWidth = touchHotspotPx,
+                ballWidth = ballSizePx,
+                insetPx = insetPx,
+                visibleBallWidth = visibleWhenDockedPx
+            )
             x = DockedBallLayout.windowPlacementFromStartX(
                 dockLeft = false,
-                startX = dm.widthPixels - visibleWhenDockedPx,
+                startX = startX,
                 screenWidth = dm.widthPixels,
                 windowWidth = touchHotspotPx
             ).edgeOffsetPx

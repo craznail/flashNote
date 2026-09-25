@@ -63,6 +63,7 @@ internal object ArcMenuDesign {
     const val buttonSizeDp = 40f
     const val dockedVisibleRatio = 0.75f
     const val idleDockedVisibleRatio = 0.26f
+    const val minIdleDockedVisibleDp = 16f
     const val idleBallAlpha = 0.68f
     const val idleBallScale = 0.96f
     const val idleCollapseDelayMs = 2_600L
@@ -81,7 +82,9 @@ internal object ArcMenuDesign {
     const val idleTimeoutMs = 5_000L
 
     fun dockedVisibleDp(ballSizeDp: Float): Float = ballSizeDp * dockedVisibleRatio
-    fun idleDockedVisibleDp(ballSizeDp: Float): Float = ballSizeDp * idleDockedVisibleRatio
+    fun idleDockedVisibleDp(ballSizeDp: Float): Float =
+        maxOf(ballSizeDp * idleDockedVisibleRatio, minIdleDockedVisibleDp)
+            .coerceAtMost(ballSizeDp)
 
     fun remainingIdleExpandMs(elapsedMs: Long): Long =
         (idleExpandDurationMs - elapsedMs.coerceAtLeast(0L)).coerceAtLeast(0L)

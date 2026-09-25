@@ -6,6 +6,38 @@ import org.junit.Test
 class DockedBallLayoutTest {
 
     @Test
+    fun extraSmallInitialRightDock_keepsTheIdleSliverVisible() {
+        val screenWidth = 1_080
+        val windowWidth = 56
+        val ballWidth = 32
+        val inset = (windowWidth - ballWidth) / 2
+        val activeVisible = 24
+        val idleVisible = 16
+        val startX = DockedBallLayout.dockedStartX(
+            dockLeft = false,
+            screenWidth = screenWidth,
+            windowWidth = windowWidth,
+            ballWidth = ballWidth,
+            insetPx = inset,
+            visibleBallWidth = activeVisible
+        )
+        val window = DockedBallLayout.windowPlacementFromStartX(
+            dockLeft = false,
+            startX = startX,
+            screenWidth = screenWidth,
+            windowWidth = windowWidth
+        )
+        val ballLeft = DockedBallLayout.placement(dockLeft = false, insetPx = inset).screenLeft(
+            windowX = window.screenLeft(screenWidth, windowWidth),
+            windowWidth = windowWidth,
+            ballWidth = ballWidth
+        )
+
+        assertEquals(activeVisible, screenWidth - ballLeft)
+        assertEquals(idleVisible, screenWidth - ballLeft - (activeVisible - idleVisible))
+    }
+
+    @Test
     fun rightDockedWindow_keepsOneEdgeOffsetWhenWidthChanges() {
         val screenWidth = 1_080
         val collapsedWidth = 144
