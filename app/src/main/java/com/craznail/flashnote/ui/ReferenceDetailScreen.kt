@@ -8,7 +8,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -52,21 +54,21 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.key
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -78,6 +80,7 @@ import com.craznail.flashnote.data.Note
 import com.craznail.flashnote.data.TagEntity
 import com.craznail.flashnote.overlay.OverlayService
 import java.io.File
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -109,7 +112,10 @@ fun FlashNoteDetailScreen(
     var summaryDraft by remember(note.id) { mutableStateOf(note.summary.orEmpty()) }
     var tagDraft by remember(selectedTagIds) { mutableStateOf(selectedTagIds) }
     val context = LocalContext.current
-    val orderedNotes = remember(browseNotes) { browseNotes.sortedByDescending { it.createdAt } }
+    val orderedNotes = remember(browseNotes, note.id) {
+        val availableNotes = if (browseNotes.any { it.id == note.id }) browseNotes else browseNotes + note
+        availableNotes.sortedByDescending { it.createdAt }
+    }
     val noteIndex = orderedNotes.indexOfFirst { it.id == note.id }
 
     BackHandler(enabled = minimal) { minimal = false }
@@ -119,13 +125,12 @@ fun FlashNoteDetailScreen(
     }
 
     if (minimal) {
-        key(note.id) {
-            MinimalImageScreen(
-                note = note,
-                onPrevious = { if (noteIndex > 0) onShowNote(orderedNotes[noteIndex - 1]) },
-                onNext = { if (noteIndex >= 0 && noteIndex < orderedNotes.lastIndex) onShowNote(orderedNotes[noteIndex + 1]) }
-            )
-        }
+        MinimalImageScreen(
+            notes = orderedNotes,
+            initialNoteIndex = noteIndex.coerceAtLeast(0),
+            selectedNoteId = note.id,
+            onShowNote = onShowNote
+        )
     } else {
         Scaffold(
             containerColor = DesignBackground,
@@ -321,33 +326,33 @@ private fun OrganizeAction(label: String, icon: ImageVector, onClick: () -> Unit
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MinimalImageScreen(
-    note: Note,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit
+    notes: List<Note>,
+    initialNoteIndex: Int,
+    selectedNoteId: Long,
+    onShowNote: (Note) -> Unit
 ) {
-    val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
-    var dragDistance = 0f
-    Box(
-        Modifier.fillMaxSize().background(Color.Black).pointerInput(note.id, swipeThreshold) {
-            detectVerticalDragGestures(
-                onDragStart = { dragDistance = 0f },
-                onDragEnd = {
-                    when {
-                        dragDistance <= -swipeThreshold -> onNext()
-                        dragDistance >= swipeThreshold -> onPrevious()
-                    }
-                    dragDistance = 0f
-                },
-                onDragCancel = { dragDistance = 0f }
-            ) { change, dragAmount ->
-                dragDistance += dragAmount
-                change.consume()
+    val pagerState = rememberPagerState(initialPage = initialNoteIndex) { notes.size }
+    val currentNoteId by rememberUpdatedState(selectedNoteId)
+    val showNote by rememberUpdatedState(onShowNote)
+
+    LaunchedEffect(pagerState, notes) {
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collect { page ->
+                notes.getOrNull(page)?.takeIf { it.id != currentNoteId }?.let(showNote)
             }
-        },
-        contentAlignment = Alignment.Center
-    ) {
+    }
+
+    VerticalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize().background(Color.Black),
+        beyondBoundsPageCount = 1,
+        key = { notes[it].id }
+    ) { page ->
+        val note = notes[page]
         AsyncImage(
             model = Uri.fromFile(File(note.imagePath)),
             contentDescription = "笔记原始截图",
