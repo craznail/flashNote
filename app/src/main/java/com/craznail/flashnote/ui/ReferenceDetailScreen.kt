@@ -8,10 +8,10 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,9 +51,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -63,16 +63,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -80,6 +76,7 @@ import coil.compose.AsyncImage
 import com.craznail.flashnote.data.FolderEntity
 import com.craznail.flashnote.data.Note
 import com.craznail.flashnote.data.TagEntity
+import com.craznail.flashnote.overlay.OverlayService
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -116,13 +113,15 @@ fun FlashNoteDetailScreen(
     val noteIndex = orderedNotes.indexOfFirst { it.id == note.id }
 
     BackHandler(enabled = minimal) { minimal = false }
+    DisposableEffect(minimal) {
+        if (minimal) OverlayService.setCaptureHidden(true)
+        onDispose { if (minimal) OverlayService.setCaptureHidden(false) }
+    }
 
     if (minimal) {
         key(note.id) {
-            MinimalReadingScreen(
+            MinimalImageScreen(
                 note = note,
-                folderName = folders.firstOrNull { it.id == note.folderId }?.name,
-                onBack = { minimal = false },
                 onPrevious = { if (noteIndex > 0) onShowNote(orderedNotes[noteIndex - 1]) },
                 onNext = { if (noteIndex >= 0 && noteIndex < orderedNotes.lastIndex) onShowNote(orderedNotes[noteIndex + 1]) }
             )
@@ -323,74 +322,38 @@ private fun OrganizeAction(label: String, icon: ImageVector, onClick: () -> Unit
 }
 
 @Composable
-private fun MinimalReadingScreen(
+private fun MinimalImageScreen(
     note: Note,
-    folderName: String?,
-    onBack: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit
 ) {
-    val scroll = rememberScrollState()
-    val context = LocalContext.current
-    var moreOpen by remember { mutableStateOf(false) }
-    val threshold = with(LocalDensity.current) { 90.dp.toPx() }
-    var edgeDrag by remember { mutableFloatStateOf(0f) }
-    val edgeConnection = remember(note.id, scroll, threshold) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: NestedScrollSource): androidx.compose.ui.geometry.Offset {
-                if (source != NestedScrollSource.Drag) return androidx.compose.ui.geometry.Offset.Zero
-                val atTop = scroll.value == 0 && available.y > 0
-                val atBottom = scroll.value == scroll.maxValue && available.y < 0
-                edgeDrag = if (atTop || atBottom) edgeDrag + available.y else 0f
-                return androidx.compose.ui.geometry.Offset.Zero
-            }
-
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                when {
-                    edgeDrag > threshold -> onPrevious()
-                    edgeDrag < -threshold -> onNext()
-                }
-                edgeDrag = 0f
-                return Velocity.Zero
-            }
-        }
-    }
-    Scaffold(containerColor = Color.White) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "退出极简模式", tint = DesignInk) }
-                Box {
-                    IconButton(onClick = { moreOpen = true }) { Icon(Icons.Default.MoreHoriz, "更多", tint = DesignMuted) }
-                    DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
-                        DropdownMenuItem(text = { Text("复制笔记") }, onClick = { copyNote(context, note); moreOpen = false })
-                        DropdownMenuItem(text = { Text("退出极简模式") }, onClick = { onBack(); moreOpen = false })
+    val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
+    var dragDistance = 0f
+    Box(
+        Modifier.fillMaxSize().background(Color.Black).pointerInput(note.id, swipeThreshold) {
+            detectVerticalDragGestures(
+                onDragStart = { dragDistance = 0f },
+                onDragEnd = {
+                    when {
+                        dragDistance <= -swipeThreshold -> onNext()
+                        dragDistance >= swipeThreshold -> onPrevious()
                     }
-                }
+                    dragDistance = 0f
+                },
+                onDragCancel = { dragDistance = 0f }
+            ) { change, dragAmount ->
+                dragDistance += dragAmount
+                change.consume()
             }
-            Column(
-                Modifier.weight(1f).nestedScroll(edgeConnection).verticalScroll(scroll).padding(horizontal = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
-            ) {
-                Spacer(Modifier.height(16.dp))
-                Text(noteDisplayTitle(note), color = DesignInk, fontSize = 31.sp, fontWeight = FontWeight.Bold, lineHeight = 39.sp)
-                Text(noteDisplayTime(note.createdAt), color = DesignMuted, fontSize = 13.sp)
-                if (folderName != null) Text(folderName, color = DesignBlue, fontSize = 13.sp)
-                if (!note.ocrText.isNullOrBlank()) {
-                    Text(note.ocrText, color = Color(0xFF46536B), fontSize = 18.sp, lineHeight = 30.sp)
-                } else if (!note.summary.isNullOrBlank()) {
-                    Text(note.summary, color = Color(0xFF46536B), fontSize = 18.sp, lineHeight = 30.sp)
-                } else {
-                    AsyncImage(
-                        model = Uri.fromFile(File(note.imagePath)),
-                        contentDescription = "笔记原图",
-                        modifier = Modifier.fillMaxWidth(),
-                        contentScale = ContentScale.FillWidth
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-            }
-            Text("上滑 / 下滑切换笔记", color = DesignMuted, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(12.dp))
-        }
+        },
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = Uri.fromFile(File(note.imagePath)),
+            contentDescription = "笔记原始截图",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit
+        )
     }
 }
 
