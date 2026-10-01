@@ -3,8 +3,6 @@ package com.craznail.flashnote.capture
 import android.app.Activity
 import android.app.Notification
 import android.app.Service
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -27,7 +25,6 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import androidx.core.content.FileProvider
 import com.craznail.flashnote.FlashNoteApp
 import com.craznail.flashnote.R
 import com.craznail.flashnote.data.PreferencesManager
@@ -347,7 +344,7 @@ class CaptureService : Service() {
 
     private suspend fun processCapturedBitmap(bitmap: Bitmap) {
         val path = withContext(Dispatchers.IO) { savePng(bitmap) }
-        runCatching { copyImageToClipboard(path) }
+        runCatching { NoteImageTransfer.copy(this, path) }
             .onFailure { Log.w(TAG, "Could not copy captured image to clipboard", it) }
         val app = application as FlashNoteApp
         val prefs = PreferencesManager.get(this@CaptureService)
@@ -524,16 +521,6 @@ class CaptureService : Service() {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
         return file.absolutePath
-    }
-
-    private fun copyImageToClipboard(path: String) {
-        val uri = FileProvider.getUriForFile(
-            this,
-            "$packageName.fileprovider",
-            File(path)
-        )
-        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newUri(contentResolver, "flashNote screenshot", uri))
     }
 
     private fun releaseVirtualDisplay() {

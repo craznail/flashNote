@@ -75,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import com.craznail.flashnote.capture.NoteImageTransfer
 import com.craznail.flashnote.data.FolderEntity
 import com.craznail.flashnote.data.Note
 import com.craznail.flashnote.data.TagEntity
@@ -152,6 +153,17 @@ fun FlashNoteDetailScreen(
                     Box {
                         IconButton(onClick = { moreOpen = true }) { Icon(Icons.Default.MoreHoriz, "更多操作", tint = DesignInk) }
                         DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                            DropdownMenuItem(text = { Text("复制图片") }, onClick = {
+                                moreOpen = false
+                                runCatching { NoteImageTransfer.copy(context, note.imagePath) }
+                                    .onSuccess { Toast.makeText(context, "已复制图片", Toast.LENGTH_SHORT).show() }
+                                    .onFailure { Toast.makeText(context, "图片不可用", Toast.LENGTH_SHORT).show() }
+                            })
+                            DropdownMenuItem(text = { Text("分享图片") }, onClick = {
+                                moreOpen = false
+                                runCatching { NoteImageTransfer.share(context, note.imagePath) }
+                                    .onFailure { Toast.makeText(context, "无法分享图片", Toast.LENGTH_SHORT).show() }
+                            })
                             DropdownMenuItem(text = { Text("归档笔记") }, onClick = { moreOpen = false; onArchive() })
                             if (note.archivedAt != null) DropdownMenuItem(text = { Text("恢复归档") }, onClick = { moreOpen = false; onRestoreFromArchive() })
                             if (note.trashedAt != null) DropdownMenuItem(text = { Text("恢复笔记") }, onClick = { moreOpen = false; onRestoreFromTrash() })
