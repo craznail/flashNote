@@ -28,10 +28,9 @@ internal object CaptureSelectionDesign {
         screenWidthPx: Int,
         selectionTop: Float,
         selectionBottom: Float,
-        diameterPx: Int,
-        density: Float
+        diameterPx: Int
     ): CaptureSelectionRect {
-        val right = screenWidthPx - 10f * density
+        val right = screenWidthPx.toFloat()
         val centerY = (selectionTop + selectionBottom) / 2f
         val radius = diameterPx / 2f
         return CaptureSelectionRect(

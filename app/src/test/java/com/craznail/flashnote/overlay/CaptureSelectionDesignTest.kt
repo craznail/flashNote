@@ -11,17 +11,16 @@ class CaptureSelectionDesignTest {
             screenWidthPx = 1080,
             selectionTop = 600f,
             selectionBottom = 1200f,
-            diameterPx = 132,
-            density = 3f
+            diameterPx = 132
         )
 
-        assertEquals(918f, bounds.left, 0f)
+        assertEquals(948f, bounds.left, 0f)
         assertEquals(834f, bounds.top, 0f)
-        assertEquals(1050f, bounds.right, 0f)
+        assertEquals(1080f, bounds.right, 0f)
         assertEquals(966f, bounds.bottom, 0f)
 
-        val moved = CaptureSelectionDesign.captureButtonBounds(1080, 300f, 700f, 132, 3f)
-        assertEquals(1050f, moved.right, 0f)
+        val moved = CaptureSelectionDesign.captureButtonBounds(1080, 300f, 700f, 132)
+        assertEquals(1080f, moved.right, 0f)
         assertEquals(500f, moved.centerY(), 0f)
     }
 

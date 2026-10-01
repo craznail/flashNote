@@ -2,6 +2,7 @@ package com.craznail.flashnote.overlay
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.graphics.Typeface
@@ -60,6 +61,7 @@ class OverlayBallView @JvmOverloads constructor(
     private val touchSlop = 8 * density
     private val ballContainer: FrameLayout
     private val iconView: ImageView
+    private val captureIconView: ImageView
     private val feedbackBadge: FrameLayout
     private val thumbBadge: ImageView
     private val successBadge: View
@@ -95,6 +97,7 @@ class OverlayBallView @JvmOverloads constructor(
     private var longPressTriggered = false
     private var idleCollapsed = false
     private var downStartedFromIdle = false
+    private var captureSelectionActive = false
 
     private val touchHotspotPx = (ArcMenuDesign.ballTouchSizeDp * density).roundToInt()
 
@@ -118,6 +121,14 @@ class OverlayBallView @JvmOverloads constructor(
             setImageResource(R.drawable.ic_ball_normal)
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = context.getString(R.string.app_name)
+        }
+
+        captureIconView = ImageView(context).apply {
+            val iconSize = (ballSizePx * 0.43f).roundToInt()
+            layoutParams = LayoutParams(iconSize, iconSize).apply { gravity = Gravity.CENTER }
+            setImageResource(R.drawable.ic_menu_capture)
+            imageTintList = ColorStateList.valueOf(0xFF146FEF.toInt())
+            visibility = View.GONE
         }
 
         val badgeSizePx = (ArcMenuDesign.feedbackBadgeSizeDp * density).roundToInt()
@@ -169,6 +180,7 @@ class OverlayBallView @JvmOverloads constructor(
         feedbackBadge.addView(failureBadge)
 
         ballContainer.addView(iconView)
+        ballContainer.addView(captureIconView)
         ballContainer.addView(feedbackBadge)
 
         addView(ballContainer)
@@ -328,13 +340,20 @@ class OverlayBallView @JvmOverloads constructor(
         visibility = if (hidden) View.INVISIBLE else View.VISIBLE
     }
 
-    fun hideForCaptureSelection() {
-        animate().cancel()
+    fun enterCaptureSelection() {
+        if (captureSelectionActive) return
+        captureSelectionActive = true
         cancelIdleCollapse()
         hideActionMenu(animate = false)
         clearSidePill(immediate = true)
+        cancelFeedbackState()
+        badgeModel.restoreDefault(persistThumbnail = feedbackBadgePersistent)
+        expandFromIdle(animated = false)
+        iconView.setImageResource(R.drawable.bg_ball_glass)
+        captureIconView.visibility = View.VISIBLE
+        feedbackBadge.visibility = View.GONE
         alpha = 1f
-        visibility = View.INVISIBLE
+        visibility = View.VISIBLE
     }
 
     internal fun moveToCaptureButton(anchor: CaptureSelectionAnchor) {
@@ -355,17 +374,13 @@ class OverlayBallView @JvmOverloads constructor(
         runCatching { wm.updateViewLayout(this, lp) }
     }
 
-    fun revealFromCaptureSelection(durationMs: Long) {
-        animate().cancel()
-        expandFromIdle(animated = false)
-        visibility = View.VISIBLE
-        alpha = 0f
-        animate()
-            .alpha(1f)
-            .setDuration(durationMs)
-            .setInterpolator(ENTER_EASING)
-            .withEndAction { scheduleIdleCollapse() }
-            .start()
+    fun exitCaptureSelection() {
+        if (!captureSelectionActive) return
+        captureSelectionActive = false
+        captureIconView.visibility = View.GONE
+        iconView.setImageResource(R.drawable.ic_ball_normal)
+        applyBadgeVisualImmediately(badgeModel.visual)
+        scheduleIdleCollapse()
     }
 
     fun setBallSize(size: OverlayBallSize) {
@@ -391,6 +406,12 @@ class OverlayBallView @JvmOverloads constructor(
             lp.width = ballSizePx
             lp.height = ballSizePx
             iconView.layoutParams = lp
+        }
+        (captureIconView.layoutParams as LayoutParams).also { lp ->
+            val iconSize = (ballSizePx * 0.43f).roundToInt()
+            lp.width = iconSize
+            lp.height = iconSize
+            captureIconView.layoutParams = lp
         }
 
         val wm = windowManager
@@ -566,6 +587,7 @@ class OverlayBallView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (captureSelectionActive) return true
         val lp = windowParams ?: return super.onTouchEvent(event)
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
@@ -758,6 +780,7 @@ class OverlayBallView @JvmOverloads constructor(
 
     private fun scheduleIdleCollapse(delayMs: Long = ArcMenuDesign.idleCollapseDelayMs) {
         cancelIdleCollapse()
+        if (captureSelectionActive) return
         val runnable = Runnable {
             idleCollapseRunnable = null
             if (canCollapseIdle()) collapseToIdle()
@@ -767,7 +790,8 @@ class OverlayBallView @JvmOverloads constructor(
     }
 
     private fun canCollapseIdle(): Boolean =
-        visibility == View.VISIBLE &&
+        !captureSelectionActive &&
+            visibility == View.VISIBLE &&
             !menuState.isOpen &&
             hideToastRunnable == null &&
             !pillSticky &&

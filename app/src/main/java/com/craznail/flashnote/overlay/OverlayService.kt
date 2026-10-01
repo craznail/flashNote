@@ -191,11 +191,13 @@ class OverlayService : Service() {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
+        ballView?.enterCaptureSelection()
         selectionWindow = CaptureSelectionWindow(
             context = this,
             windowManager = wm,
             overlayType = type,
             initialAnchor = anchor,
+            onButtonMoved = { ballView?.moveToCaptureButton(it) },
             onConfirm = { bounds ->
                 closeCaptureSelection(bounds.buttonAnchor) {
                     wantSummary = false
@@ -206,7 +208,6 @@ class OverlayService : Service() {
             onCancel = { closeCaptureSelection() }
         ).also {
             it.show()
-            ballView?.hideForCaptureSelection()
         }
     }
 
@@ -217,8 +218,10 @@ class OverlayService : Service() {
         val window = selectionWindow ?: return
         selectionWindow = null
         buttonAnchor?.let { ballView?.moveToCaptureButton(it) }
-        ballView?.revealFromCaptureSelection(CaptureSelectionMotion.EXIT_DURATION_MS)
-        window.close(animated = true, onClosed = onClosed)
+        window.close(animated = true) {
+            ballView?.exitCaptureSelection()
+            onClosed()
+        }
     }
 
     private fun setCaptureUiHidden(hidden: Boolean) {

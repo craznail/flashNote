@@ -6,10 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
-import android.graphics.drawable.Drawable
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -18,9 +15,6 @@ import android.view.WindowManager
 import android.view.animation.PathInterpolator
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
-import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.DrawableCompat
-import com.craznail.flashnote.R
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -46,6 +40,7 @@ internal class CaptureSelectionWindow(
     private val windowManager: WindowManager,
     overlayType: Int,
     private val initialAnchor: CaptureSelectionAnchor,
+    private val onButtonMoved: (CaptureSelectionAnchor) -> Unit,
     private val onConfirm: (CaptureSelectionBounds) -> Unit,
     private val onCancel: () -> Unit
 ) {
@@ -76,6 +71,7 @@ internal class CaptureSelectionWindow(
     init {
         root.onConfirm = onConfirm
         root.onCancel = onCancel
+        root.onButtonMoved = onButtonMoved
     }
 
     fun show() {
@@ -124,6 +120,7 @@ internal class CaptureSelectionWindow(
     private class SelectionView(context: Context) : View(context) {
         var onConfirm: ((CaptureSelectionBounds) -> Unit)? = null
         var onCancel: (() -> Unit)? = null
+        var onButtonMoved: ((CaptureSelectionAnchor) -> Unit)? = null
 
         private val density = resources.displayMetrics.density
         private val touchSlop = 8f * density
@@ -160,12 +157,6 @@ internal class CaptureSelectionWindow(
             strokeCap = Paint.Cap.ROUND
             style = Paint.Style.STROKE
         }
-        private val captureGlass: Drawable? =
-            ContextCompat.getDrawable(context, R.drawable.bg_ball_glass)?.mutate()
-        private val captureIcon: Drawable? = ContextCompat.getDrawable(context, R.drawable.ic_menu_capture)
-            ?.mutate()
-            ?.also { DrawableCompat.setTint(it, Color.rgb(20, 111, 239)) }
-
         private var selectionTop = 0f
         private var selectionBottom = 0f
         private var captureAnchor: CaptureSelectionAnchor? = null
@@ -179,8 +170,6 @@ internal class CaptureSelectionWindow(
         private val topHandleRect = RectF()
         private val bottomHandleRect = RectF()
         private val captureRect = RectF()
-        private val handler = Handler(Looper.getMainLooper())
-        private val inactivityRunnable = Runnable { onCancel?.invoke() }
         private val backCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             OnBackInvokedCallback { onCancel?.invoke() }
         } else null
@@ -212,11 +201,9 @@ internal class CaptureSelectionWindow(
                 }
                 registeredBackDispatcher = dispatcher
             }
-            resetInactivityTimer()
         }
 
         override fun onDetachedFromWindow() {
-            handler.removeCallbacks(inactivityRunnable)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 backCallback?.let { callback ->
                     registeredBackDispatcher?.unregisterOnBackInvokedCallback(callback)
@@ -229,7 +216,6 @@ internal class CaptureSelectionWindow(
         fun configureInitialAnchor(anchor: CaptureSelectionAnchor) {
             captureAnchor = anchor
             if (height > 0) initializeSelection()
-            resetInactivityTimer()
         }
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -247,6 +233,7 @@ internal class CaptureSelectionWindow(
             selectionTop = desiredCenter - desiredHeight / 2f
             selectionBottom = desiredCenter + desiredHeight / 2f
             updateControlRects()
+            notifyButtonMoved()
             invalidate()
         }
 
@@ -266,7 +253,6 @@ internal class CaptureSelectionWindow(
             drawHandleGlyph(canvas, topHandleRect)
             drawSecondaryControl(canvas, bottomHandleRect)
             drawHandleGlyph(canvas, bottomHandleRect)
-            drawCaptureControl(canvas)
         }
 
         private fun drawSecondaryControl(canvas: Canvas, rect: RectF) {
@@ -291,21 +277,6 @@ internal class CaptureSelectionWindow(
             canvas.drawLine(cx - half, cy + gap, cx + half, cy + gap, glyphPaint)
         }
 
-        private fun drawCaptureControl(canvas: Canvas) {
-            val left = captureRect.left.roundToInt()
-            val top = captureRect.top.roundToInt()
-            val right = captureRect.right.roundToInt()
-            val bottom = captureRect.bottom.roundToInt()
-            captureGlass?.setBounds(left, top, right, bottom)
-            captureGlass?.draw(canvas)
-
-            val iconSize = (captureRect.width() * 0.43f).roundToInt()
-            val iconLeft = (captureRect.centerX() - iconSize / 2f).roundToInt()
-            val iconTop = (captureRect.centerY() - iconSize / 2f).roundToInt()
-            captureIcon?.setBounds(iconLeft, iconTop, iconLeft + iconSize, iconTop + iconSize)
-            captureIcon?.draw(canvas)
-        }
-
         private fun updateControlRects() {
             if (width <= 0 || height <= 0) return
             CaptureSelectionDesign.handleBounds(width, selectionTop, density).also { bounds ->
@@ -317,15 +288,25 @@ internal class CaptureSelectionWindow(
 
             val diameter = captureAnchor?.diameterPx ?: return
             val bounds = CaptureSelectionDesign.captureButtonBounds(
-                width, selectionTop, selectionBottom, diameter, density
+                width, selectionTop, selectionBottom, diameter
             )
             captureRect.set(
                 bounds.left, bounds.top, bounds.right, bounds.bottom
             )
         }
 
+        private fun notifyButtonMoved() {
+            val diameter = captureAnchor?.diameterPx ?: return
+            val location = IntArray(2)
+            getLocationOnScreen(location)
+            onButtonMoved?.invoke(CaptureSelectionAnchor(
+                leftPx = (location[0] + captureRect.left).roundToInt(),
+                topPx = (location[1] + captureRect.top).roundToInt(),
+                diameterPx = diameter
+            ))
+        }
+
         override fun onTouchEvent(event: MotionEvent): Boolean {
-            resetInactivityTimer()
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x
@@ -340,26 +321,31 @@ internal class CaptureSelectionWindow(
                 MotionEvent.ACTION_MOVE -> {
                     val dy = event.y - downY
                     if (abs(event.x - downX) > touchSlop || abs(dy) > touchSlop) moved = true
-                    when (activeTarget) {
+                    val adjusting = when (activeTarget) {
                         TouchTarget.TOP_HANDLE -> {
                             selectionTop = (startTop + dy).coerceIn(
                                 edgeInset,
                                 selectionBottom - minSelectionHeight
                             )
-                            invalidate()
+                            true
                         }
                         TouchTarget.BOTTOM_HANDLE -> {
                             selectionBottom = (startBottom + dy).coerceIn(
                                 selectionTop + minSelectionHeight,
                                 height - edgeInset
                             )
-                            invalidate()
+                            true
                         }
                         TouchTarget.MOVE_SELECTION -> if (moved) {
                             moveSelectionBy(dy)
-                            invalidate()
-                        }
-                        else -> Unit
+                            true
+                        } else false
+                        else -> false
+                    }
+                    if (adjusting) {
+                        updateControlRects()
+                        notifyButtonMoved()
+                        invalidate()
                     }
                     return activeTarget != TouchTarget.NONE
                 }
@@ -399,11 +385,6 @@ internal class CaptureSelectionWindow(
             }
         }
 
-        private fun resetInactivityTimer() {
-            handler.removeCallbacks(inactivityRunnable)
-            handler.postDelayed(inactivityRunnable, INACTIVITY_TIMEOUT_MS)
-        }
-
         private fun moveSelectionBy(dy: Float) {
             val selectionHeight = startBottom - startTop
             var top = startTop + dy
@@ -437,10 +418,6 @@ internal class CaptureSelectionWindow(
             BOTTOM_HANDLE,
             MOVE_SELECTION,
             CAPTURE
-        }
-
-        companion object {
-            private const val INACTIVITY_TIMEOUT_MS = 10_000L
         }
     }
 }
