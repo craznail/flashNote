@@ -24,13 +24,23 @@ internal object CaptureSelectionDesign {
     const val HANDLE_WIDTH_DP = 32f
     const val HANDLE_HEIGHT_DP = 14f
 
-    fun captureButtonBounds(anchor: CaptureSelectionAnchor): CaptureSelectionRect =
-        CaptureSelectionRect(
-            left = anchor.leftPx.toFloat(),
-            top = anchor.topPx.toFloat(),
-            right = (anchor.leftPx + anchor.diameterPx).toFloat(),
-            bottom = (anchor.topPx + anchor.diameterPx).toFloat()
+    fun captureButtonBounds(
+        screenWidthPx: Int,
+        selectionTop: Float,
+        selectionBottom: Float,
+        diameterPx: Int,
+        density: Float
+    ): CaptureSelectionRect {
+        val right = screenWidthPx - 10f * density
+        val centerY = (selectionTop + selectionBottom) / 2f
+        val radius = diameterPx / 2f
+        return CaptureSelectionRect(
+            left = right - diameterPx,
+            top = centerY - radius,
+            right = right,
+            bottom = centerY + radius
         )
+    }
 
     fun handleBounds(
         screenWidthPx: Int,

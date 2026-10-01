@@ -28,7 +28,8 @@ import kotlin.math.roundToInt
 
 internal data class CaptureSelectionBounds(
     val top: Int,
-    val bottom: Int
+    val bottom: Int,
+    val buttonAnchor: CaptureSelectionAnchor
 ) {
     val height: Int get() = bottom - top
 }
@@ -314,15 +315,12 @@ internal class CaptureSelectionWindow(
                 bottomHandleRect.set(bounds.left, bounds.top, bounds.right, bounds.bottom)
             }
 
-            val anchor = captureAnchor ?: return
-            val screenBounds = CaptureSelectionDesign.captureButtonBounds(anchor)
-            val location = IntArray(2)
-            getLocationOnScreen(location)
+            val diameter = captureAnchor?.diameterPx ?: return
+            val bounds = CaptureSelectionDesign.captureButtonBounds(
+                width, selectionTop, selectionBottom, diameter, density
+            )
             captureRect.set(
-                screenBounds.left - location[0],
-                screenBounds.top - location[1],
-                screenBounds.right - location[0],
-                screenBounds.bottom - location[1]
+                bounds.left, bounds.top, bounds.right, bounds.bottom
             )
         }
 
@@ -415,11 +413,17 @@ internal class CaptureSelectionWindow(
         }
 
         private fun boundsOnScreen(): CaptureSelectionBounds {
+            updateControlRects()
             val location = IntArray(2)
             getLocationOnScreen(location)
             val top = (location[1] + selectionTop).roundToInt()
             val bottom = (location[1] + selectionBottom).roundToInt()
-            return CaptureSelectionBounds(top = top, bottom = bottom)
+            val buttonAnchor = CaptureSelectionAnchor(
+                leftPx = (location[0] + captureRect.left).roundToInt(),
+                topPx = (location[1] + captureRect.top).roundToInt(),
+                diameterPx = captureAnchor?.diameterPx ?: captureRect.width().roundToInt()
+            )
+            return CaptureSelectionBounds(top = top, bottom = bottom, buttonAnchor = buttonAnchor)
         }
 
         private fun expanded(rect: RectF, amount: Float): RectF = RectF(rect).apply {

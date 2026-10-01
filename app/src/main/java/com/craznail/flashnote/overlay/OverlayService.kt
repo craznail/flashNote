@@ -197,7 +197,7 @@ class OverlayService : Service() {
             overlayType = type,
             initialAnchor = anchor,
             onConfirm = { bounds ->
-                closeCaptureSelection {
+                closeCaptureSelection(bounds.buttonAnchor) {
                     wantSummary = false
                     wantImageOnly = false
                     triggerCapture(bounds.top, bounds.bottom)
@@ -210,9 +210,13 @@ class OverlayService : Service() {
         }
     }
 
-    private fun closeCaptureSelection(onClosed: () -> Unit = {}) {
+    private fun closeCaptureSelection(
+        buttonAnchor: CaptureSelectionAnchor? = null,
+        onClosed: () -> Unit = {}
+    ) {
         val window = selectionWindow ?: return
         selectionWindow = null
+        buttonAnchor?.let { ballView?.moveToCaptureButton(it) }
         ballView?.revealFromCaptureSelection(CaptureSelectionMotion.EXIT_DURATION_MS)
         window.close(animated = true, onClosed = onClosed)
     }

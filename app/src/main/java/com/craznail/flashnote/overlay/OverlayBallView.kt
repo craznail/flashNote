@@ -337,6 +337,24 @@ class OverlayBallView @JvmOverloads constructor(
         visibility = View.INVISIBLE
     }
 
+    internal fun moveToCaptureButton(anchor: CaptureSelectionAnchor) {
+        val wm = windowManager ?: return
+        val lp = windowParams ?: return
+        val inset = (touchHotspotPx - ballSizePx) / 2
+        val windowStartX = anchor.leftPx - inset
+        dockedLeft = false
+        lp.gravity = Gravity.TOP or Gravity.END
+        lp.x = DockedBallLayout.windowPlacementFromStartX(
+            dockLeft = false,
+            startX = windowStartX,
+            screenWidth = resources.displayMetrics.widthPixels,
+            windowWidth = lp.width
+        ).edgeOffsetPx
+        lp.y = anchor.topPx - inset
+        pinBallToDockEdge(dockLeft = false)
+        runCatching { wm.updateViewLayout(this, lp) }
+    }
+
     fun revealFromCaptureSelection(durationMs: Long) {
         animate().cancel()
         expandFromIdle(animated = false)

@@ -6,19 +6,23 @@ import org.junit.Test
 class CaptureSelectionDesignTest {
 
     @Test
-    fun captureButtonBounds_matchTheFloatingBallAnchorExactly() {
-        val anchor = CaptureSelectionAnchor(
-            leftPx = -18,
-            topPx = 420,
-            diameterPx = 132
+    fun captureButton_followsTheRightMiddleOfTheSelection() {
+        val bounds = CaptureSelectionDesign.captureButtonBounds(
+            screenWidthPx = 1080,
+            selectionTop = 600f,
+            selectionBottom = 1200f,
+            diameterPx = 132,
+            density = 3f
         )
 
-        val bounds = CaptureSelectionDesign.captureButtonBounds(anchor)
+        assertEquals(918f, bounds.left, 0f)
+        assertEquals(834f, bounds.top, 0f)
+        assertEquals(1050f, bounds.right, 0f)
+        assertEquals(966f, bounds.bottom, 0f)
 
-        assertEquals(-18f, bounds.left, 0f)
-        assertEquals(420f, bounds.top, 0f)
-        assertEquals(114f, bounds.right, 0f)
-        assertEquals(552f, bounds.bottom, 0f)
+        val moved = CaptureSelectionDesign.captureButtonBounds(1080, 300f, 700f, 132, 3f)
+        assertEquals(1050f, moved.right, 0f)
+        assertEquals(500f, moved.centerY(), 0f)
     }
 
     @Test
