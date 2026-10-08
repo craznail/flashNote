@@ -99,4 +99,5 @@
     <string name="accessibility_capture_enable">请开启“闪记高清截图”无障碍服务</string>
     <string name="accessibility_capture_failed">高清截图失败，请重试</string>
     <string name="accessibility_capture_too_fast">截图太频繁，请稍后再试</string>
+    <string name="capture_in_progress">正在截图</string>
 </resources>
