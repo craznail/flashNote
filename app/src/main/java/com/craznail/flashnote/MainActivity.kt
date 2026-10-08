@@ -1,6 +1,7 @@
 package com.craznail.flashnote
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,8 +15,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.craznail.flashnote.data.Note
 import com.craznail.flashnote.data.OverlayPreferences
@@ -38,7 +41,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (Build.VERSION.SDK_INT >= 33) {
+        // Ask once per fresh launch, and only if not granted yet — not on every
+        // configuration-change recreation (rotation, dark mode, locale).
+        if (Build.VERSION.SDK_INT >= 33 &&
+            savedInstanceState == null &&
+            ContextCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
             notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
         consumeOpenSettings(intent)
@@ -49,8 +60,15 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             FlashNoteTheme {
-                var showSettings by remember { mutableStateOf(false) }
-                var selectedNote by remember { mutableStateOf<Note?>(null) }
+                // Saveable so the current page survives rotation / config changes.
+                // The note is restored by id from the live notes list.
+                var showSettings by rememberSaveable { mutableStateOf(false) }
+                var selectedNoteId by rememberSaveable { mutableStateOf<Long?>(null) }
+                var selectedNoteCache by remember { mutableStateOf<Note?>(null) }
+                fun openNote(note: Note?) {
+                    selectedNoteCache = note
+                    selectedNoteId = note?.id
+                }
                 val settingsTick by openSettingsRequests.collectAsState()
                 val requestedLatestNote by latestNoteToOpen.collectAsState()
                 LaunchedEffect(settingsTick) {
@@ -59,13 +77,17 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(requestedLatestNote) {
                     requestedLatestNote?.let { note ->
                         showSettings = false
-                        selectedNote = note
+                        openNote(note)
                         latestNoteToOpen.value = null
                     }
                 }
                 // Driven by OverlayService lifecycle — covers chip toggle AND START_OVERLAY intent
                 val overlayRunning by OverlayService.running.collectAsState()
                 val notes by app.notes.observeNotes().collectAsState(initial = emptyList())
+                val selectedNote: Note? = selectedNoteId?.let { id ->
+                    notes.firstOrNull { it.id == id }
+                        ?: selectedNoteCache?.takeIf { it.id == id }
+                }
                 val localSummary by app.prefs.localSummaryEnabled.collectAsState()
                 val feedbackBadgePersistent by overlayPrefs.feedbackBadgePersistent.collectAsState()
                 val ballSize by overlayPrefs.ballSize.collectAsState()
@@ -108,11 +130,11 @@ class MainActivity : ComponentActivity() {
                         val note = selectedNote!!
                         NoteDetailScreen(
                             note = note,
-                            onBack = { selectedNote = null },
+                            onBack = { openNote(null) },
                             onDelete = {
                                 lifecycleScope.launch {
                                     app.notes.delete(note)
-                                    selectedNote = null
+                                    openNote(null)
                                 }
                             }
                         )
@@ -131,7 +153,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onOpenSettings = { showSettings = true },
-                            onOpenNote = { selectedNote = it },
+                            onOpenNote = { openNote(it) },
                             onDelete = { note ->
                                 lifecycleScope.launch { app.notes.delete(note) }
                             }

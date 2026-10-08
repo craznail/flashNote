@@ -94,6 +94,10 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.8.2")
+    // registerForActivityResult needs Fragment >= 1.3.0; ML Kit pulls an older one transitively.
+    implementation("androidx.fragment:fragment-ktx:1.6.2")
+    // Used directly by ArcMenuWindow (was only available transitively via the old Fragment).
+    implementation("androidx.interpolator:interpolator:1.0.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-service:2.7.0")
