@@ -223,7 +223,10 @@ class CaptureService : Service() {
             stopSelf()
             return
         }
-        if (!capturing.compareAndSet(false, true)) return
+        if (!capturing.compareAndSet(false, true)) {
+            OverlayService.notifyToast(this, getString(R.string.capture_in_progress))
+            return
+        }
 
         scope.launch {
             try {
@@ -299,7 +302,10 @@ class CaptureService : Service() {
             return
         }
         ensureVirtualDisplay()
-        if (!capturing.compareAndSet(false, true)) return
+        if (!capturing.compareAndSet(false, true)) {
+            OverlayService.notifyToast(this, getString(R.string.capture_in_progress))
+            return
+        }
 
         scope.launch {
             try {

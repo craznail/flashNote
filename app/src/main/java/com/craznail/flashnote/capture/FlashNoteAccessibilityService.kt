@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
+import androidx.annotation.RequiresApi
 
 /**
  * One-shot high quality screenshot backend.
@@ -42,7 +43,15 @@ class FlashNoteAccessibilityService : AccessibilityService() {
         fun requestScreenshot(callback: (Result<Bitmap>) -> Unit): Boolean {
             val service = instance ?: return false
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+            takeScreenshotApi30(service, callback)
+            return true
+        }
 
+        @RequiresApi(Build.VERSION_CODES.R)
+        private fun takeScreenshotApi30(
+            service: FlashNoteAccessibilityService,
+            callback: (Result<Bitmap>) -> Unit
+        ) {
             service.takeScreenshot(
                 Display.DEFAULT_DISPLAY,
                 service.mainExecutor,
@@ -81,7 +90,6 @@ class FlashNoteAccessibilityService : AccessibilityService() {
                     }
                 }
             )
-            return true
         }
     }
 }

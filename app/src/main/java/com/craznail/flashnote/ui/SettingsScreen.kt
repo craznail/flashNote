@@ -48,7 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,15 +96,24 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var editBaseUrl by remember { mutableStateOf(remoteAiBaseUrl) }
-    var editApiKey by remember { mutableStateOf(remoteAiApiKey) }
-    var editModel by remember { mutableStateOf(remoteAiModel) }
-    var showKey by remember { mutableStateOf(false) }
+    // Saveable so unsaved input survives rotation / config changes.
+    var editBaseUrl by rememberSaveable { mutableStateOf(remoteAiBaseUrl) }
+    var editApiKey by rememberSaveable { mutableStateOf(remoteAiApiKey) }
+    var editModel by rememberSaveable { mutableStateOf(remoteAiModel) }
+    var showKey by rememberSaveable { mutableStateOf(false) }
+    // Last persisted config copied into the fields. Only re-sync the fields when the
+    // persisted config actually changes, so recreation does not wipe unsaved edits.
+    var syncedConfig by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(remoteAiBaseUrl, remoteAiApiKey, remoteAiModel) {
-        editBaseUrl = remoteAiBaseUrl
-        editApiKey = remoteAiApiKey
-        editModel = remoteAiModel.ifBlank { PreferencesManager.DEFAULT_MODEL }
+        val persisted = listOf(remoteAiBaseUrl, remoteAiApiKey, remoteAiModel)
+            .joinToString("\u0000")
+        if (syncedConfig != persisted) {
+            editBaseUrl = remoteAiBaseUrl
+            editApiKey = remoteAiApiKey
+            editModel = remoteAiModel.ifBlank { PreferencesManager.DEFAULT_MODEL }
+            syncedConfig = persisted
+        }
     }
 
     Scaffold(

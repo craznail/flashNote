@@ -1,8 +1,13 @@
 # flashNote（闪记）
 
-Android 悬浮球截屏笔记应用（侧载）。点击悬浮球 → MediaProjection 截屏 → 保存 PNG 到应用私有目录 → 写入 Room 笔记 → 悬浮层反馈「已保存到笔记」。
+Android 悬浮球截屏笔记应用（侧载）。点击悬浮球 → 截屏 → 保存 PNG 到应用私有目录 → 写入 Room 笔记 → 悬浮层反馈「已保存到笔记」。
 
-**不使用无障碍（Accessibility）抓取。** `isPremium=false` 占位。
+**截屏方式按系统版本区分：**
+
+- **Android 11+（API 30+）**：使用无障碍服务的一次性截图（`FlashNoteAccessibilityService.takeScreenshot`）。需要在系统「无障碍」设置里手动开启 **「闪记高清截图」** 服务；未开启时点截图会提示并跳转到无障碍设置。该服务只在你主动点击截图时截一次屏，不读取页面内容。
+- **Android 8–10（API 26–29）**：使用 MediaProjection，首次截屏弹系统授权。
+
+`isPremium=false` 占位。
 
 ## 环境要求
 
@@ -33,16 +38,17 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 1. 打开应用 → 笔记收件箱。
 2. 点击「开启悬浮球」。若未授权「显示在其他应用上层」，会跳转系统设置。
-3. 点击悬浮球：展开弧形玻璃菜单（再点球或点空白处收起）。
-4. 菜单项：「只存图」「存图+摘要」「设置」「退出」。首次截屏项会弹出 **MediaProjection** 授权；同意后截屏保存。
-5. 成功：球心绿色对勾约 420ms（无中心 Toast）；可选缩略图角标。截屏前会暂时隐藏悬浮球，避免球入镜。
-6. 拒绝授权：球体红色闪约 350ms。
-7. 系统 tip（授权成功 / 共享中断 / 再点退出）：球旁短 pill（≤8 字）。
-8. 「退出」需连点两次确认（侧边 pill「再点退出」）；「设置」打开应用设置页。
+3. **Android 11+**：到 系统设置 → 无障碍 → 已下载的应用/已安装的服务 → **闪记高清截图**，打开开关（只需一次）。没开启时点「截图」会提示「请开启“闪记高清截图”无障碍服务」并跳到无障碍设置。
+4. 点击悬浮球：展开弧形玻璃菜单（再点球或点空白处收起）。
+5. 菜单项：「截图」「笔记详情」（打开最新一条笔记）「设置」「退出」。截图是否生成本地摘要跟随设置里的「本地摘要」开关。Android 8–10 首次截图会弹出 **MediaProjection** 授权；同意后截屏保存。
+6. 成功：球心绿色对勾约 420ms（无中心 Toast）；可选缩略图角标。截屏前会暂时隐藏悬浮球，避免球入镜。
+7. 拒绝授权：球体红色闪约 350ms。
+8. 系统 tip（授权成功 / 共享中断 / 再点退出）：球旁短 pill（≤8 字）。
+9. 「退出」需连点两次确认（侧边 pill「再点退出」）；「设置」打开应用设置页。
 
 ### 设置
 
-- **本地摘要**：默认关闭，开关会持久化；当前版本不真正生成摘要。
+- **本地摘要**：默认**开启**（`PreferencesManager` 中 `local_summary_enabled` 默认 `true`），开关会持久化；开启时截图后做端上 OCR 并生成本地启发式摘要，关闭后只存图。
 
 ## 权限说明
 
@@ -51,14 +57,15 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 | `SYSTEM_ALERT_WINDOW` | 悬浮球 |
 | `FOREGROUND_SERVICE` / `SPECIAL_USE` | 悬浮球前台服务 |
 | `FOREGROUND_SERVICE_MEDIA_PROJECTION` | 截屏前台服务 |
-| `POST_NOTIFICATIONS`（API 33+） | 前台服务通知 |
-| MediaProjection（运行时弹窗） | 截取屏幕像素 |
+| `POST_NOTIFICATIONS`（API 33+） | 前台服务通知（未授权时启动应用会请求一次） |
+| 无障碍服务「闪记高清截图」（API 30+，需手动开启） | Android 11+ 截取屏幕像素（`BIND_ACCESSIBILITY_SERVICE`） |
+| MediaProjection（运行时弹窗，API 26–29） | Android 8–10 截取屏幕像素 |
 
 ## Overlay → Capture → Save → Feedback 代码路径
 
 1. `OverlayService` + `OverlayBallView`：40dp 玻璃球、贴边露出约 29dp、点击展开弧形菜单（按下缩放 0.92）。
-2. 无 MediaProjection 令牌时 → `ProjectionPermissionActivity`（透明、用完即关）。
-3. `CaptureService`（`mediaProjection` FGS）→ `VirtualDisplay` + `ImageReader` → PNG 写入 `files/notes/`。
+2. Android 11+：`CaptureService.doCapture` → `FlashNoteAccessibilityService.takeScreenshot`（一次性截图）→ PNG 写入 `files/notes/`。
+3. Android 8–10：无 MediaProjection 令牌时 → `ProjectionPermissionActivity`（透明、用完即关）；`CaptureService`（`mediaProjection` FGS）→ `VirtualDisplay` + `ImageReader` → PNG 写入 `files/notes/`。
 4. `NoteRepository` / Room 插入行 → `OverlayService.notifySaved` → 球心绿勾 420ms（无中心弹层）。
 
 ## 国产 ROM 注意事项（MIUI / 华为 / HarmonyOS 等）
