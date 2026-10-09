@@ -9,6 +9,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
@@ -96,6 +97,12 @@ class MainActivity : ComponentActivity() {
                 val remoteBaseUrl by app.prefs.remoteAiBaseUrlFlow.collectAsState()
                 val remoteApiKey by app.prefs.remoteAiApiKeyFlow.collectAsState()
                 val remoteModel by app.prefs.remoteAiModelFlow.collectAsState()
+
+                // System Back / gesture: return to the inbox from settings or note detail.
+                // On the inbox itself the handler is disabled, so default Activity behavior applies.
+                BackHandler(enabled = showSettings || selectedNote != null) {
+                    if (showSettings) showSettings = false else selectedNote = null
+                }
 
                 when {
                     showSettings -> {
