@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
                 // System Back / gesture: return to the inbox from settings or note detail.
                 // On the inbox itself the handler is disabled, so default Activity behavior applies.
                 BackHandler(enabled = showSettings || selectedNote != null) {
-                    if (showSettings) showSettings = false else selectedNote = null
+                    if (showSettings) showSettings = false else openNote(null)
                 }
 
                 when {
